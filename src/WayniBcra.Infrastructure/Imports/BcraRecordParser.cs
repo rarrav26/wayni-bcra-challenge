@@ -40,7 +40,9 @@ public static class BcraRecordParser
         var entityCode = Slice(line, EntityCodeField);
         var identificationType = Slice(line, IdentificationTypeField);
         var identificationNumber = Slice(line, IdentificationNumberField);
-        var creditStatus = Slice(line, CreditStatusField);
+        // Field 6 is left-aligned and space-padded in the real file (e.g. "1 ", "5 ", "11").
+        // Normalize to a canonical 2-digit, zero-padded code ("01", "05", "11") per ADR-013/014.
+        var creditStatus = NormalizeCreditStatus(line[CreditStatusField.Start..CreditStatusField.End]);
         // Field 7 is right-aligned and space-padded in the BCRA format, so trimming spaces is part
         // of parsing it (handled inside ParseFinancingAmount), unlike the fixed numeric fields above.
         var financingAmount = ParseFinancingAmount(line[FinancingAmountField.Start..FinancingAmountField.End]);
@@ -83,8 +85,25 @@ public static class BcraRecordParser
         return value;
     }
 
-    // Fixed-width numeric fields are zero-padded (not space-padded) and taken verbatim,
-    // preserving the original format (e.g. "00007", "01"). No trimming.
+    // Fields taken verbatim: entity code and identification are zero-padded/fixed in the file
+    // (e.g. "00007", "20003905528"), so no transformation is needed.
     private static string Slice(ReadOnlySpan<char> line, (int Start, int End) field)
         => line[field.Start..field.End].ToString();
+
+    /// <summary>
+    /// Normalizes the credit status (field 6) to a canonical 2-digit, zero-padded code.
+    /// The real file left-aligns and space-pads this field ("1 " -> "01"); 2-digit codes pass through
+    /// ("11" -> "11"). The original numeric meaning is preserved (ADR-013/014).
+    /// </summary>
+    public static string NormalizeCreditStatus(ReadOnlySpan<char> raw)
+    {
+        var trimmed = raw.Trim();
+
+        if (trimmed.IsEmpty)
+        {
+            throw new FormatException("Credit status is empty.");
+        }
+
+        return trimmed.ToString().PadLeft(2, '0');
+    }
 }

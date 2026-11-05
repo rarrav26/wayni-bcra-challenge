@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  localstack:
+    # Last Community version that does NOT require an auth token (4.15+ and the 2026.03+ calendar
+    # releases require one). Covers S3 + SQS. See ADR-028.
+    image: localstack/localstack:4.14
+    environment:
+      SERVICES: s3,sqs
+      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
+      AWS_QUEUE_NAME: ${AWS_QUEUE_NAME}
+      AWS_DLQ_NAME: ${AWS_DLQ_NAME}
+      AWS_MAX_RECEIVE_COUNT: ${AWS_MAX_RECEIVE_COUNT}
+      AWS_VISIBILITY_TIMEOUT: ${AWS_VISIBILITY_TIMEOUT}
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal s3 ls && awslocal sqs list-queues"]
+      interval: 5s
+      timeout: 10s
+      retries: 15
+
+  api:
+    build:
+      context: .
+      dockerfile: src/WayniBcra.Api/Dockerfile
+    environment:
+      # Development so Swagger UI is available in the container (demo/evaluation convenience).
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: ${ConnectionStrings__Postgres}
+      Aws__ServiceUrl: ${Aws__ServiceUrl}
+      Aws__Region: ${Aws__Region}
+      Aws__BucketName: ${Aws__BucketName}
+      Aws__QueueName: ${Aws__QueueName}
+      Aws__AccessKey: ${Aws__AccessKey}
+      Aws__SecretKey: ${Aws__SecretKey}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/WayniBcra.Worker/Dockerfile
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: ${ConnectionStrings__Postgres}
+      Aws__ServiceUrl: ${Aws__ServiceUrl}
+      Aws__Region: ${Aws__Region}
+      Aws__BucketName: ${Aws__BucketName}
+      Aws__QueueName: ${Aws__QueueName}
+      Aws__AccessKey: ${Aws__AccessKey}
+      Aws__SecretKey: ${Aws__SecretKey}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

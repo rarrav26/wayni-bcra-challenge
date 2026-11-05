@@ -1,0 +1,6 @@
+# Ensure shell scripts always use LF line endings, even on Windows checkouts.
+# A CRLF shell script fails inside Linux containers.
+*.sh text eol=lf
+
+# Normalize line endings for common text files (Git decides, avoids churn).
+* text=auto

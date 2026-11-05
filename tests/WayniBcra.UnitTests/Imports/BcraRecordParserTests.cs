@@ -4,14 +4,16 @@ namespace WayniBcra.UnitTests.Imports;
 
 public class BcraRecordParserTests
 {
-    // Builds a valid 171-char line from the fields we care about, padding the rest with zeros/spaces.
+    // Builds a valid 171-char line mimicking the REAL BCRA file layout.
     // Layout: [0:5] entity, [5:11] date, [11:13] idType, [13:24] idNumber, [24:27] activity,
     // [27:29] status, [29:41] amount, [41:171] remaining fields (filled to reach width 171).
+    // Important: the real file left-aligns and space-pads the status field ("1 ", "5 "), so the
+    // raw status is placed with PadRight to reproduce that format faithfully.
     private static string BuildLine(
         string entityCode = "00007",
         string identificationType = "11",
+        string rawCreditStatus = "1 ",
         string identificationNumber = "20123456789",
-        string creditStatus = "01",
         string financingAmount = "1,0")
     {
         var entity = entityCode.PadLeft(5, '0');
@@ -19,7 +21,7 @@ public class BcraRecordParserTests
         var idType = identificationType.PadLeft(2, '0');
         var idNumber = identificationNumber.PadRight(11, ' ');
         const string activity = "000";
-        var status = creditStatus.PadLeft(2, '0');
+        var status = rawCreditStatus.PadRight(2, ' ')[..2]; // exactly 2 chars as in the file
         var amount = financingAmount.PadLeft(12, ' ');
 
         var head = entity + date + idType + idNumber + activity + status + amount; // 41 chars
@@ -30,11 +32,12 @@ public class BcraRecordParserTests
     [Fact]
     public void ParseLine_ValidLine_ExtractsAllFields()
     {
+        // Status "5 " (left-aligned, space-padded, as in the real file) must normalize to "05".
         var line = BuildLine(
             entityCode: "00007",
             identificationType: "11",
             identificationNumber: "20123456789",
-            creditStatus: "05",
+            rawCreditStatus: "5 ",
             financingAmount: "123,4");
 
         var record = BcraRecordParser.ParseLine(line);
@@ -79,19 +82,33 @@ public class BcraRecordParserTests
         Assert.Throws<FormatException>(() => BcraRecordParser.ParseFinancingAmount(raw));
     }
 
+    // The real file left-aligns and space-pads the status: single-digit codes come as "1 ".."5 ",
+    // two-digit codes come complete ("11", "21", "23"). All must normalize to a 2-digit zero-padded code.
     [Theory]
-    [InlineData("01")]
-    [InlineData("03")]
-    [InlineData("04")]
-    [InlineData("05")]
-    [InlineData("11")]
-    [InlineData("21")]
-    [InlineData("23")]
-    public void ParseLine_KnownCreditStatuses_PreservedAsTwoDigitString(string status)
+    [InlineData("1 ", "01")]
+    [InlineData("3 ", "03")]
+    [InlineData("4 ", "04")]
+    [InlineData("5 ", "05")]
+    [InlineData("11", "11")]
+    [InlineData("21", "21")]
+    [InlineData("23", "23")]
+    public void ParseLine_CreditStatus_NormalizedToTwoDigitZeroPadded(string rawStatus, string expected)
     {
-        var line = BuildLine(creditStatus: status);
+        var line = BuildLine(rawCreditStatus: rawStatus);
         var record = BcraRecordParser.ParseLine(line);
-        Assert.Equal(status, record.CreditStatus);
+        Assert.Equal(expected, record.CreditStatus);
+    }
+
+    // Direct tests of the normalization helper, covering the real space-padded format.
+    [Theory]
+    [InlineData("1 ", "01")]
+    [InlineData(" 1", "01")]
+    [InlineData("5 ", "05")]
+    [InlineData("11", "11")]
+    [InlineData("23", "23")]
+    public void NormalizeCreditStatus_ReturnsTwoDigitZeroPadded(string raw, string expected)
+    {
+        Assert.Equal(expected, BcraRecordParser.NormalizeCreditStatus(raw));
     }
 
     [Theory]
