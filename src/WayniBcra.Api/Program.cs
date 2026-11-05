@@ -14,8 +14,10 @@ builder.Services.AddInfrastructureServices(builder.Configuration);
 var app = builder.Build();
 
 // Apply pending migrations at startup so `docker-compose up` leaves the schema ready.
-using (var scope = app.Services.CreateScope())
+// Skipped in the Testing environment (API tests replace the data layer and need no real database).
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<WayniBcraDbContext>();
     await dbContext.Database.MigrateAsync();
 }
@@ -38,3 +40,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Exposed so WebApplicationFactory<Program> can reference the API entry point in tests.
+public partial class Program { }

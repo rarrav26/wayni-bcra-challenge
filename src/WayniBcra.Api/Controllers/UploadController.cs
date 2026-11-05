@@ -27,7 +27,7 @@ public sealed class UploadController : ControllerBase
     {
         if (file is null || file.Length == 0)
         {
-            return BadRequest("A non-empty file is required.");
+            return BadRequest("Se requiere un archivo no vacío.");
         }
 
         await using var stream = file.OpenReadStream();
