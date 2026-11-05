@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WayniBcra.Application.Imports;
 using WayniBcra.Infrastructure.Imports;
 using WayniBcra.Infrastructure.Persistence;
+using WayniBcra.Infrastructure.Persistence.Repositories;
 
 namespace WayniBcra.Infrastructure;
 
@@ -13,7 +14,7 @@ namespace WayniBcra.Infrastructure;
 /// </summary>
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(
+    public static IServiceCollection AddInfrastructureServices(
         this IServiceCollection services,
         IConfiguration configuration)
     {
@@ -25,6 +26,8 @@ public static class DependencyInjection
                 .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IImportRecordReader, BcraImportRecordReader>();
+        services.AddScoped<IImportProcessor, NpgsqlImportProcessor>();
+        services.AddScoped<IImportJobRepository, ImportJobRepository>();
 
         return services;
     }
