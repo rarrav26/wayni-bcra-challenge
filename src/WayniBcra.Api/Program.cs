@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using WayniBcra.Api.HealthChecks;
 using WayniBcra.Application;
 using WayniBcra.Infrastructure;
 using WayniBcra.Infrastructure.Persistence;
@@ -10,6 +12,19 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
+
+// Health checks exposed at /health:
+//  - PostgreSQL uses the community AspNetCore.HealthChecks.NpgSql package (the standard choice).
+//  - S3 and SQS use custom checks (S3HealthCheck / SqsHealthCheck) for a uniform approach: both
+//    reuse the IAmazonS3 / IAmazonSQS clients already registered by Infrastructure (configured with
+//    the LocalStack endpoint locally, real AWS in production). The community SQS package can't target
+//    a custom ServiceURL, so a custom check was required there anyway; S3 follows the same pattern.
+builder.Services.AddHealthChecks()
+    .AddNpgSql(
+        sp => sp.GetRequiredService<IConfiguration>().GetConnectionString("Postgres")!,
+        name: "postgres")
+    .AddCheck<S3HealthCheck>("s3")
+    .AddCheck<SqsHealthCheck>("sqs");
 
 var app = builder.Build();
 
@@ -37,6 +52,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseAuthorization();
 
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    // Return a JSON body with the aggregate status and a per-dependency breakdown.
+    ResponseWriter = HealthCheckResponseWriter.WriteResponse
+});
 app.MapControllers();
 
 app.Run();
