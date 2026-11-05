@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WayniBcra.Api/WayniBcra.Api.csproj" />
+    <Project Path="src/WayniBcra.Application/WayniBcra.Application.csproj" />
+    <Project Path="src/WayniBcra.Domain/WayniBcra.Domain.csproj" />
+    <Project Path="src/WayniBcra.Infrastructure/WayniBcra.Infrastructure.csproj" />
+    <Project Path="src/WayniBcra.Worker/WayniBcra.Worker.csproj" />
+  </Folder>
+</Solution>

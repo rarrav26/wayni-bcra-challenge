@@ -1,0 +1,6 @@
+@WayniBcra.Api_HostAddress = http://localhost:5124
+
+GET {{WayniBcra.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
