@@ -6,4 +6,7 @@
     <Project Path="src/WayniBcra.Infrastructure/WayniBcra.Infrastructure.csproj" />
     <Project Path="src/WayniBcra.Worker/WayniBcra.Worker.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WayniBcra.UnitTests/WayniBcra.UnitTests.csproj" />
+  </Folder>
 </Solution>
