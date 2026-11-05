@@ -1,0 +1,23 @@
+# Build outputs
+**/bin/
+**/obj/
+
+# Git
+.git/
+.gitignore
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+
+# Environment files (never copy secrets into the image)
+.env
+**/.env
+
+# Frontend build (if present)
+**/node_modules/
+**/dist/
+
+# Docs / local tooling not needed in the image
+**/*.md
