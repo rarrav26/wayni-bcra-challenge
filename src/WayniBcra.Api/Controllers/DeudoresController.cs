@@ -37,7 +37,7 @@ public sealed class DeudoresController : ControllerBase
     {
         if (n <= 0)
         {
-            return BadRequest("The number of debtors must be greater than zero.");
+            return BadRequest("La cantidad de deudores debe ser mayor a cero.");
         }
 
         var debtors = await _debtors.GetTopByTotalFinancingAsync(n, cancellationToken);
