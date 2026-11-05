@@ -157,6 +157,30 @@ curl http://localhost:8080/entidades/00007
 }
 ```
 
+### `GET /health`
+
+Verifica el estado de las dependencias de runtime (PostgreSQL, S3 y SQS). Devuelve `200` con estado
+`Healthy` si todas responden, o `503` con estado `Unhealthy` si alguna falla. La respuesta incluye el
+desglose por dependencia. Pensado para orquestadores de contenedores y monitoreo.
+
+```bash
+curl http://localhost:8080/health
+```
+
+```json
+{
+  "status": "Healthy",
+  "totalDuration": "00:00:00.1599524",
+  "checks": [
+    { "name": "postgres", "status": "Healthy", "duration": "00:00:00.0066522", "description": null },
+    { "name": "s3",       "status": "Healthy", "duration": "00:00:00.1108963", "description": null },
+    { "name": "sqs",      "status": "Healthy", "duration": "00:00:00.1102253", "description": null }
+  ]
+}
+```
+
+Cuando una dependencia falla, su `status` pasa a `Unhealthy` y `description` indica el motivo.
+
 ---
 
 ## Arquitectura
@@ -300,6 +324,7 @@ hardcodeadas en el repositorio. Se provee `.env.example` como plantilla document
 - Persistencia con EF Core Code First y migraciones versionadas.
 - Resiliencia: reintentos vía SQS, Dead Letter Queue, reproceso idempotente.
 - Notificación de finalización mediante log estructurado (tiempo total y resumen de carga).
+- Health check (`/health`) con verificación de PostgreSQL, S3 y SQS, y desglose por dependencia.
 - Contenerización completa con Docker Compose (`docker-compose up`).
 - Tests unitarios (parser, dominio) y de integración (procesamiento contra PostgreSQL real).
 
@@ -311,7 +336,6 @@ Priorizadas por tiempo; varias corresponden a los _bonus_ del enunciado:
 - **CI/CD** (build, tests y análisis estático con SonarQube).
 - **Observabilidad centralizada** (CloudWatch vía LocalStack) con correlación de logs entre servicios.
 - **Notificaciones** por email (Mailpit) y webhook, con _retry_ y _circuit breaker_ (Polly).
-- **Health checks** (`/health`) para PostgreSQL, S3 y SQS.
 - **Manejo global de errores** con `ProblemDetails` y mensajes localizados.
 
 ---
