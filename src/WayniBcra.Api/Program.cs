@@ -1,20 +1,37 @@
+using Microsoft.EntityFrameworkCore;
+using WayniBcra.Application;
+using WayniBcra.Infrastructure;
+using WayniBcra.Infrastructure.Persistence;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+builder.Services.AddApplicationServices();
+builder.Services.AddInfrastructureServices(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Apply pending migrations at startup so `docker-compose up` leaves the schema ready.
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<WayniBcraDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-}
+    app.UseSwaggerUI(options =>
+    {
+        // Point Swagger UI to the OpenAPI document produced by MapOpenApi().
+        options.SwaggerEndpoint("/openapi/v1.json", "WayniBcra.Api v1");
+    });
 
-app.UseHttpsRedirection();
+    // Convenience: redirect the root to the Swagger UI in development.
+    app.MapGet("/", () => Results.Redirect("/swagger"));
+}
 
 app.UseAuthorization();
 
