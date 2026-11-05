@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WayniBcra.Application.Imports;
+using WayniBcra.Application.Queries;
 using WayniBcra.Infrastructure.Imports;
 using WayniBcra.Infrastructure.Persistence;
 using WayniBcra.Infrastructure.Persistence.Repositories;
@@ -28,6 +29,8 @@ public static class DependencyInjection
         services.AddScoped<IImportRecordReader, BcraImportRecordReader>();
         services.AddScoped<IImportProcessor, NpgsqlImportProcessor>();
         services.AddScoped<IImportJobRepository, ImportJobRepository>();
+        services.AddScoped<IDebtorReadRepository, DebtorReadRepository>();
+        services.AddScoped<IFinancialEntityReadRepository, FinancialEntityReadRepository>();
 
         return services;
     }
