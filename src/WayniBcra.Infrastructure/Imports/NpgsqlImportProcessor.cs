@@ -14,6 +14,11 @@ namespace WayniBcra.Infrastructure.Imports;
 /// </summary>
 public sealed class NpgsqlImportProcessor : IImportProcessor
 {
+    // Ingestion/aggregation over the full padrón (~34M rows) runs well beyond the default 30s command
+    // timeout, so a generous timeout is used for these bulk operations. Not unbounded, to still fail
+    // eventually on a genuine hang.
+    private const int BulkCommandTimeoutSeconds = 1800; // 30 minutes
+
     private readonly WayniBcraDbContext _dbContext;
     private readonly ILogger<NpgsqlImportProcessor> _logger;
 
@@ -75,7 +80,10 @@ public sealed class NpgsqlImportProcessor : IImportProcessor
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid importJobId, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(
-            "DELETE FROM staging_records WHERE import_job_id = @importJobId", connection, transaction);
+            "DELETE FROM staging_records WHERE import_job_id = @importJobId", connection, transaction)
+        {
+            CommandTimeout = BulkCommandTimeoutSeconds
+        };
         cmd.Parameters.AddWithValue("importJobId", importJobId);
         await cmd.ExecuteNonQueryAsync(ct);
     }
@@ -146,7 +154,10 @@ ON CONFLICT (identification_number) DO UPDATE SET
     max_credit_status = EXCLUDED.max_credit_status,
     total_financing_amount = EXCLUDED.total_financing_amount;";
 
-        await using var cmd = new NpgsqlCommand(sql, connection, transaction);
+        await using var cmd = new NpgsqlCommand(sql, connection, transaction)
+        {
+            CommandTimeout = BulkCommandTimeoutSeconds
+        };
         cmd.Parameters.AddWithValue("importJobId", importJobId);
         return await cmd.ExecuteNonQueryAsync(ct);
     }
@@ -164,7 +175,10 @@ GROUP BY entity_code
 ON CONFLICT (entity_code) DO UPDATE SET
     total_financing_amount = EXCLUDED.total_financing_amount;";
 
-        await using var cmd = new NpgsqlCommand(sql, connection, transaction);
+        await using var cmd = new NpgsqlCommand(sql, connection, transaction)
+        {
+            CommandTimeout = BulkCommandTimeoutSeconds
+        };
         cmd.Parameters.AddWithValue("importJobId", importJobId);
         return await cmd.ExecuteNonQueryAsync(ct);
     }
