@@ -1,8 +1,12 @@
 using WayniBcra.Application;
 using WayniBcra.Infrastructure;
+using WayniBcra.Infrastructure.Logging;
 using WayniBcra.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+// Centralize logs in CloudWatch (in addition to the console) under the "worker" stream.
+builder.Logging.AddCloudWatchLogging(builder.Configuration, "worker");
 
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);

@@ -3,9 +3,13 @@ using Microsoft.EntityFrameworkCore;
 using WayniBcra.Api.HealthChecks;
 using WayniBcra.Application;
 using WayniBcra.Infrastructure;
+using WayniBcra.Infrastructure.Logging;
 using WayniBcra.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Centralize logs in CloudWatch (in addition to the console) under the "api" stream.
+builder.Logging.AddCloudWatchLogging(builder.Configuration, "api");
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

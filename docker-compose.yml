@@ -28,19 +28,20 @@ services:
 
   localstack:
     # Last Community version that does NOT require an auth token (4.15+ and the 2026.03+ calendar
-    # releases require one). Covers S3 + SQS. See ADR-028.
+    # releases require one). Covers S3 + SQS + CloudWatch Logs. See ADR-028.
     image: localstack/localstack:4.14
     # LocalStack buffers the whole S3 object in memory when serving GetObject, so it needs headroom
     # above the object size for the multi-GB padrón; 8 GB proved too tight (connection reset mid-read),
     # 10 GB handles it. Emulator limitation: real S3 streams the object and never loads it into RAM.
     mem_limit: 10g
     environment:
-      SERVICES: s3,sqs
+      SERVICES: s3,sqs,logs
       AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
       AWS_QUEUE_NAME: ${AWS_QUEUE_NAME}
       AWS_DLQ_NAME: ${AWS_DLQ_NAME}
       AWS_MAX_RECEIVE_COUNT: ${AWS_MAX_RECEIVE_COUNT}
       AWS_VISIBILITY_TIMEOUT: ${AWS_VISIBILITY_TIMEOUT}
+      AWS_LOG_GROUP: ${AWS_LOG_GROUP}
     ports:
       - "4566:4566"
     volumes:
@@ -66,6 +67,7 @@ services:
       Aws__Region: ${Aws__Region}
       Aws__BucketName: ${Aws__BucketName}
       Aws__QueueName: ${Aws__QueueName}
+      Aws__LogGroup: ${Aws__LogGroup}
       Aws__AccessKey: ${Aws__AccessKey}
       Aws__SecretKey: ${Aws__SecretKey}
       # CORS: allow the frontend origin (as seen from the browser).
@@ -120,6 +122,7 @@ services:
       Aws__Region: ${Aws__Region}
       Aws__BucketName: ${Aws__BucketName}
       Aws__QueueName: ${Aws__QueueName}
+      Aws__LogGroup: ${Aws__LogGroup}
       Aws__AccessKey: ${Aws__AccessKey}
       Aws__SecretKey: ${Aws__SecretKey}
       # SMTP (Mailpit) for the notification dispatcher.
