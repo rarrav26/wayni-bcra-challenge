@@ -12,6 +12,11 @@ El procesamiento es asíncrono y distribuido, desacoplado mediante una cola de m
 - [Objetivo funcional](#objetivo-funcional)
 - [Stack tecnológico](#stack-tecnológico)
 - [Cómo ejecutar](#cómo-ejecutar)
+  - [Swagger](#swagger)
+  - [Interfaz web](#interfaz-web)
+  - [Notificaciones (Mailpit)](#notificaciones-mailpit)
+  - [Logs](#logs)
+  - [Probar los endpoints (`requests.http`)](#probar-los-endpoints-archivo-requestshttp)
 - [Endpoints](#endpoints)
 - [Arquitectura](#arquitectura)
 - [Testing](#testing)
@@ -75,7 +80,8 @@ docker-compose up --build
 Eso levanta seis servicios:
 
 - **PostgreSQL** (puerto 5432): base de datos.
-- **LocalStack** (puerto 4566): emula S3 y SQS. Al arrancar crea el bucket, la cola y la DLQ.
+- **LocalStack** (puerto 4566): emula S3, SQS y CloudWatch Logs. Al arrancar crea el bucket, la cola,
+  la DLQ, el log group y la notificación S3 → SQS.
 - **API** (puerto 8080): expone los endpoints. Aplica las migraciones al iniciar.
 - **Worker**: consume la cola, procesa los archivos y envía las notificaciones.
 - **Frontend** (puerto 5173): interfaz web para subir el archivo y consultar resultados.
@@ -272,6 +278,13 @@ curl http://localhost:8080/health
 
 Cuando una dependencia falla, su `status` pasa a `Unhealthy` y `description` indica el motivo.
 
+### Manejo de errores
+
+Las respuestas de error siguen el estándar **ProblemDetails (RFC 7807)**: un cuerpo JSON uniforme con
+`status`, `title` y `detail`. Aplica tanto a los errores de validación (p. ej. `400` por un `n <= 0` en
+`/deudores/top/{n}`) como a las excepciones no controladas (`500`), gracias a un handler global. Los
+códigos de respuesta de cada endpoint están documentados en Swagger vía `[ProducesResponseType]`.
+
 ---
 
 ## Arquitectura
@@ -295,28 +308,31 @@ PostgreSQL como fuente de verdad. Esto permite escalarlos de forma independiente
 
 ```
 Cliente → POST /upload → API
-                          ├─ guarda el archivo en S3
                           ├─ crea un ImportJob (estado Pending)
-                          ├─ publica un mensaje en la cola (SQS)
-                          └─ responde 202 Accepted
+                          ├─ genera una URL pre-firmada (S3) para ese import
+                          └─ responde 202 Accepted { importJobId, uploadUrl }
+
+Cliente → PUT (uploadUrl) → S3        (el archivo sube DIRECTO a S3, no pasa por la API)
+                             └─ al completarse, S3 emite un evento ObjectCreated → SQS
 
 Cola (SQS) → Worker: consumidor de importación
-              ├─ descarga el archivo de S3
-              ├─ lo lee por streaming y parsea según el layout del BCRA
+              ├─ descarga el archivo de S3 por streaming (memoria acotada)
+              ├─ lo parsea según el layout del BCRA (ancho fijo)
               ├─ ingesta a tabla staging (COPY) y agrega en PostgreSQL
               ├─ persiste resultados en debtors y financial_entities (transaccional)
-              ├─ actualiza el estado del ImportJob (Completed/Failed) con su resumen
-              ├─ registra el mensaje de notificación en la misma transacción (outbox)
+              ├─ marca el ImportJob (Completed/Failed) y registra el mensaje de notificación
+              │  en la MISMA transacción (patrón Outbox)
               └─ registra un log estructurado con el tiempo total y el resumen de carga
 
 Worker: dispatcher de notificaciones (en paralelo)
-              ├─ toma los mensajes pendientes del outbox
+              ├─ toma los mensajes pendientes del outbox (polling con lock)
               ├─ envía el email de finalización (SMTP → Mailpit)
               └─ reintenta ante fallos; reprograma los que no se pudieron enviar
 ```
 
-El procesamiento no ocurre en el request HTTP: la API responde de inmediato y el trabajo pesado corre
-en el Worker. Esto permite tolerar archivos grandes y reintentos sin bloquear al cliente.
+El archivo no pasa por la API (sube directo a S3 con la URL pre-firmada), lo que permite padrones de
+varios GB. El procesamiento corre en el Worker, por streaming, sin bloquear al cliente ni cargar el
+archivo en memoria.
 
 La notificación se registra en la misma transacción que completa la importación (patrón Outbox) y se
 envía por separado: así una caída del servidor de correo no afecta el resultado de la importación.
@@ -325,18 +341,25 @@ envía por separado: así una caída del servidor de correo no afecta el resulta
 
 ## Testing
 
+Hay tres proyectos de tests:
+
+- **Unitarios** (`WayniBcra.UnitTests`): parser del archivo (offsets, formato numérico, líneas inválidas,
+  códigos de situación), transiciones de estado de `ImportJob` y `OutboxMessage` (incluido el backoff de
+  reintentos), y el handler de procesamiento (outbox transaccional, reintento de descarga ante fallos
+  transitorios).
+- **Integración** (`WayniBcra.IntegrationTests`): el procesamiento completo (`COPY` + agregación SQL)
+  contra un PostgreSQL real (Testcontainers), cubriendo el ranking de gravedad, los totales por entidad y
+  la idempotencia del reproceso.
+- **API** (`WayniBcra.ApiTests`): rutas y status de los endpoints, los nombres JSON en español del
+  contrato, y las respuestas de error (ProblemDetails), con `WebApplicationFactory`.
+
 ```bash
-# Tests unitarios (rápidos, sin dependencias)
+# Toda la suite
+dotnet test
+
+# Un proyecto puntual (los de integración y API requieren Docker)
 dotnet test tests/WayniBcra.UnitTests
-
-# Tests de integración (requieren Docker: levantan un PostgreSQL efímero con Testcontainers)
-dotnet test tests/WayniBcra.IntegrationTests
 ```
-
-- **Unitarios:** parser del archivo (offsets, formato numérico, líneas inválidas, códigos de situación),
-  y transiciones de estado del `ImportJob`.
-- **Integración:** el procesamiento completo (`COPY` + agregación SQL) contra un PostgreSQL real, cubriendo
-  el ranking de gravedad, los totales por entidad y la idempotencia del reproceso.
 
 ---
 
@@ -366,6 +389,8 @@ Funcionalidades implementadas:
 - Notificación de finalización por email (SMTP → Mailpit), registrada transaccionalmente (Outbox)
   y enviada por un dispatcher con reintentos. Además, log estructurado con tiempo total y resumen.
 - Health check (`/health`) con verificación de PostgreSQL, S3 y SQS, y desglose por dependencia.
+- Manejo de errores con ProblemDetails (RFC 7807) y handler global de excepciones; status documentados
+  en OpenAPI.
 - Observabilidad: logs estructurados a stdout + CloudWatch Logs (LocalStack) centralizados y correlados
   por `ImportJobId`.
 - Interfaz web (React + Vite + MUI) para subir el archivo y consultar deudores y entidades.
