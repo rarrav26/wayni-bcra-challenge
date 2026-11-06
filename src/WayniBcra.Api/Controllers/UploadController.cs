@@ -24,11 +24,16 @@ public sealed class UploadController : ControllerBase
     /// The client then does a PUT to <c>uploadUrl</c>; processing is triggered by the S3 event.
     /// </summary>
     [HttpPost]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Upload([FromBody] UploadRequest request, CancellationToken cancellationToken)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.FileName))
         {
-            return BadRequest("Se requiere el nombre del archivo.");
+            return Problem(
+                detail: "Se requiere el nombre del archivo.",
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Solicitud inválida");
         }
 
         var ticket = await _uploadHandler.HandleAsync(request.FileName, cancellationToken);

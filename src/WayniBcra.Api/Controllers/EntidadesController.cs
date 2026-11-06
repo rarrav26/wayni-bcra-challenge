@@ -20,6 +20,8 @@ public sealed class EntidadesController : ControllerBase
 
     /// <summary>GET /entidades/{codigo} — returns the financial entity by code.</summary>
     [HttpGet("{codigo}")]
+    [ProducesResponseType<FinancialEntityResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<FinancialEntityResponse>> GetByCodigo(string codigo, CancellationToken cancellationToken)
     {
         var entity = await _entities.GetByEntityCodeAsync(codigo, cancellationToken);

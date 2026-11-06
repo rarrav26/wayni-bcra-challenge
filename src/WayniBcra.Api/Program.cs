@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using WayniBcra.Api;
 using WayniBcra.Api.HealthChecks;
 using WayniBcra.Application;
 using WayniBcra.Infrastructure;
@@ -13,6 +14,11 @@ builder.Logging.AddCloudWatchLogging(builder.Configuration, "api");
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+// RFC 7807 ProblemDetails for consistent, structured error responses (incl. a global handler for
+// unhandled exceptions, registered below).
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
@@ -46,6 +52,9 @@ builder.Services.AddHealthChecks()
     .AddCheck<SqsHealthCheck>("sqs");
 
 var app = builder.Build();
+
+// Convert unhandled exceptions into ProblemDetails (registered first so it wraps the whole pipeline).
+app.UseExceptionHandler();
 
 // Apply pending migrations at startup so `docker-compose up` leaves the schema ready.
 // Skipped in the Testing environment (API tests replace the data layer and need no real database).
