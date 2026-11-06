@@ -54,6 +54,30 @@ public class ProcessImportHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_OnSuccess_OutboxPayloadCarriesDistinctRecordDebtorEntityCounts()
+    {
+        // Distinct values on purpose: records != debtors != entities, so a mis-mapping (e.g. sending
+        // the debtor count as the record count) would fail here — unlike a 1:1 dataset where they coincide.
+        var job = ImportJob.Create("deudores.txt");
+        _importJobRepository.GetByIdAsync(job.Id, Arg.Any<CancellationToken>()).Returns(job);
+        _recordReader.ReadAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>()).Returns(EmptyRecords());
+        _importProcessor.ProcessAsync(job.Id, Arg.Any<IAsyncEnumerable<BcraRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(new ImportResult { ProcessedRecords = 34385567, AggregatedDebtors = 19926484, AggregatedEntities = 485 });
+
+        OutboxMessage? staged = null;
+        await _outboxRepository.AddAsync(Arg.Do<OutboxMessage>(m => staged = m), Arg.Any<CancellationToken>());
+
+        var handler = CreateHandler();
+        await handler.HandleAsync(job.Id, OpenNull());
+
+        Assert.NotNull(staged);
+        var payload = ImportCompletedPayload.FromJson(staged!.Payload);
+        Assert.Equal(34385567, payload.Records);   // records read (COPY), not debtors
+        Assert.Equal(19926484, payload.Debtors);   // aggregated debtors
+        Assert.Equal(485, payload.Entities);       // aggregated entities
+    }
+
+    [Fact]
     public async Task HandleAsync_OnSuccess_StagesOutboxBeforeTheCompletionSaveChanges()
     {
         // The outbox insert must happen before the SaveChanges that commits the completion, so both
