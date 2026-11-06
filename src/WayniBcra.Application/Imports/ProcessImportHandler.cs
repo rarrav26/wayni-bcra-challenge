@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using WayniBcra.Application.Notifications;
+using WayniBcra.Domain;
 
 namespace WayniBcra.Application.Imports;
 
@@ -13,17 +15,20 @@ public sealed class ProcessImportHandler
     private readonly IImportJobRepository _importJobRepository;
     private readonly IImportRecordReader _recordReader;
     private readonly IImportProcessor _importProcessor;
+    private readonly IOutboxRepository _outboxRepository;
     private readonly ILogger<ProcessImportHandler> _logger;
 
     public ProcessImportHandler(
         IImportJobRepository importJobRepository,
         IImportRecordReader recordReader,
         IImportProcessor importProcessor,
+        IOutboxRepository outboxRepository,
         ILogger<ProcessImportHandler> logger)
     {
         _importJobRepository = importJobRepository;
         _recordReader = recordReader;
         _importProcessor = importProcessor;
+        _outboxRepository = outboxRepository;
         _logger = logger;
     }
 
@@ -52,6 +57,19 @@ public sealed class ProcessImportHandler
             var result = await _importProcessor.ProcessAsync(importJob.Id, records, cancellationToken);
 
             importJob.Complete(result.AggregatedDebtors, result.AggregatedEntities);
+
+            // Transactional Outbox: stage the completion notification so it is committed atomically
+            // with the job completion (same SaveChanges). The dispatcher delivers it afterwards.
+            var payload = new ImportCompletedPayload(
+                importJob.Id,
+                importJob.FileName,
+                result.AggregatedDebtors,
+                result.AggregatedEntities,
+                importJob.Duration?.TotalSeconds,
+                importJob.FinishedAt ?? DateTimeOffset.UtcNow);
+            var outboxMessage = OutboxMessage.Create(importJob.Id, NotificationType.Email, payload.ToJson());
+            await _outboxRepository.AddAsync(outboxMessage, cancellationToken);
+
             await _importJobRepository.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(

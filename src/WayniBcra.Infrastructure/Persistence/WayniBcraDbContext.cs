@@ -17,6 +17,7 @@ public sealed class WayniBcraDbContext : DbContext
     public DbSet<FinancialEntity> FinancialEntities => Set<FinancialEntity>();
     public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
     public DbSet<StagingRecord> StagingRecords => Set<StagingRecord>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -60,6 +60,19 @@ services:
       localstack:
         condition: service_healthy
 
+  mailpit:
+    # Local SMTP server that captures emails and exposes them in a web UI (port 8025).
+    # Used by the NotificationWorker to deliver import-completion notifications for the demo.
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   frontend:
     build:
       context: ./frontend
@@ -86,10 +99,18 @@ services:
       Aws__QueueName: ${Aws__QueueName}
       Aws__AccessKey: ${Aws__AccessKey}
       Aws__SecretKey: ${Aws__SecretKey}
+      # SMTP (Mailpit) for the notification dispatcher.
+      Smtp__Host: ${Smtp__Host}
+      Smtp__Port: ${Smtp__Port}
+      Smtp__FromAddress: ${Smtp__FromAddress}
+      Smtp__FromName: ${Smtp__FromName}
+      Smtp__ToAddress: ${Smtp__ToAddress}
     depends_on:
       postgres:
         condition: service_healthy
       localstack:
+        condition: service_healthy
+      mailpit:
         condition: service_healthy
 
 volumes:

@@ -14,10 +14,9 @@ El procesamiento es asíncrono y distribuido, desacoplado mediante una cola de m
 - [Cómo ejecutar](#cómo-ejecutar)
 - [Endpoints](#endpoints)
 - [Arquitectura](#arquitectura)
-- [Decisiones de diseño](#decisiones-de-diseño)
 - [Testing](#testing)
 - [Configuración](#configuración)
-- [Alcance y mejoras futuras](#alcance-y-mejoras-futuras)
+- [Alcance](#alcance)
 - [Formato del archivo del BCRA](#formato-del-archivo-del-bcra)
 
 ---
@@ -48,7 +47,7 @@ Y las expone mediante los endpoints de consulta definidos más abajo.
 | Ingesta masiva | Npgsql `COPY` |
 | Mensajería | Amazon SQS (emulado con LocalStack) |
 | Almacenamiento | Amazon S3 (emulado con LocalStack) |
-| Notificaciones | Log estructurado con tiempo total y resumen de carga |
+| Notificaciones | Email vía SMTP (Mailpit) y log estructurado |
 | Testing | xUnit (unitarios) + Testcontainers (integración) |
 | Infraestructura | Docker / Docker Compose |
 
@@ -68,17 +67,18 @@ No hace falta instalar .NET, PostgreSQL ni nada más: todo corre en contenedores
 # 1. Copiar la plantilla de variables de entorno
 cp .env.example .env
 
-# 2. Levantar todos los servicios (API, Worker, PostgreSQL, LocalStack)
+# 2. Levantar todos los servicios
 docker-compose up --build
 ```
 
-Eso levanta cinco servicios:
+Eso levanta seis servicios:
 
 - **PostgreSQL** (puerto 5432): base de datos.
 - **LocalStack** (puerto 4566): emula S3 y SQS. Al arrancar crea el bucket, la cola y la DLQ.
 - **API** (puerto 8080): expone los endpoints. Aplica las migraciones al iniciar.
-- **Worker**: consume la cola y procesa los archivos.
+- **Worker**: consume la cola, procesa los archivos y envía las notificaciones.
 - **Frontend** (puerto 5173): interfaz web para subir el archivo y consultar resultados.
+- **Mailpit** (puerto 8025): captura los emails de notificación y los muestra en su interfaz web.
 
 Una vez levantado, la API queda disponible en `http://localhost:8080` y la interfaz web en
 `http://localhost:5173`.
@@ -116,6 +116,17 @@ Permite usar la API desde el navegador, en tres secciones:
 > (`http://localhost:5173`), configurable mediante `Cors__AllowedOrigins__0`. En el compose el frontend
 > corre con el dev server de Vite (suficiente para la evaluación); en producción se serviría como build
 > estático detrás de un servidor web.
+
+### Notificaciones (Mailpit)
+
+Al finalizar cada importación, el sistema envía un email de notificación con el resumen del proceso.
+Los emails se capturan en la interfaz web de Mailpit:
+
+```
+http://localhost:8025
+```
+
+Subí un archivo desde la interfaz web y, al completarse el procesamiento, el email aparece en Mailpit.
 
 ---
 
@@ -232,79 +243,26 @@ Cliente → POST /upload → API
                           ├─ publica un mensaje en la cola (SQS)
                           └─ responde 202 Accepted
 
-Cola (SQS) → Worker (BackgroundService)
+Cola (SQS) → Worker: consumidor de importación
               ├─ descarga el archivo de S3
               ├─ lo lee por streaming y parsea según el layout del BCRA
               ├─ ingesta a tabla staging (COPY) y agrega en PostgreSQL
               ├─ persiste resultados en debtors y financial_entities (transaccional)
               ├─ actualiza el estado del ImportJob (Completed/Failed) con su resumen
+              ├─ registra el mensaje de notificación en la misma transacción (outbox)
               └─ registra un log estructurado con el tiempo total y el resumen de carga
+
+Worker: dispatcher de notificaciones (en paralelo)
+              ├─ toma los mensajes pendientes del outbox
+              ├─ envía el email de finalización (SMTP → Mailpit)
+              └─ reintenta ante fallos; reprograma los que no se pudieron enviar
 ```
 
 El procesamiento no ocurre en el request HTTP: la API responde de inmediato y el trabajo pesado corre
 en el Worker. Esto permite tolerar archivos grandes y reintentos sin bloquear al cliente.
 
----
-
-## Decisiones de diseño
-
-### Procesamiento por streaming + agregación en PostgreSQL
-
-El archivo real del BCRA tiene ~34,4 millones de registros (~5,8 GB), con ~19,9 millones de
-identificaciones únicas y 485 entidades (verificado midiendo el archivo provisto). Cargar todo en
-memoria para agregar no es viable de forma robusta. La estrategia:
-
-1. Leer el archivo por **streaming** (memoria acotada, sin cargarlo entero).
-2. Parsear solo los campos necesarios del layout de ancho fijo.
-3. Cargar los registros a una **tabla staging** mediante `COPY` (la vía más rápida de ingesta en Postgres).
-4. Calcular las agregaciones con SQL (`GROUP BY`), delegando en PostgreSQL el agrupado de millones de filas.
-5. Persistir los agregados en las tablas definitivas, de forma transaccional (todo o nada).
-
-Las tablas definitivas guardan los resultados ya agregados; los endpoints de consulta no recalculan nada.
-El detalle por registro no se persiste (solo vive en staging durante el procesamiento); el archivo
-original queda archivado en S3 para trazabilidad/reproceso.
-
-### Procesamiento asíncrono con SQS
-
-`POST /upload` y el procesamiento están desacoplados mediante una cola. Esto aporta resiliencia
-(reintentos, DLQ) y permite responder al cliente sin esperar. La comunicación con la cola se abstrae
-mediante una interfaz en Application; la implementación usa el SDK de AWS SQS, apuntando a LocalStack en
-local y pudiendo apuntar a AWS real sin cambios de código.
-
-**Resiliencia:** si el procesamiento de un mensaje falla, no se confirma (no se borra de la cola) y SQS
-lo reintenta tras el visibility timeout; luego de 3 intentos va a la Dead Letter Queue. El reproceso es
-idempotente (upsert), por lo que reintentar es seguro.
-
-### EF Core Code First
-
-El esquema se define desde el código mediante migraciones versionadas, manteniendo el dominio
-independiente de la base y haciendo el esquema reproducible (la API migra al arrancar). EF Core se usa
-para el modelo y las consultas; la ingesta masiva usa `COPY` por rendimiento.
-
-### Nomenclatura
-
-- **Código y base de datos en inglés** (estándar de la industria); tablas y columnas en `snake_case`.
-- **Rutas HTTP en español**, respetando el contrato textual del enunciado.
-- **Campos JSON de las respuestas en español**, con los nombres del enunciado, mapeados mediante
-  `[JsonPropertyName]` sobre DTOs. El dominio permanece en inglés.
-
-> **Equivalencia de términos:** el campo interno `total_financing_amount` corresponde al
-> `suma_total_prestamos` del enunciado. Se eligió "financing" porque el campo 7 del layout del BCRA
-> abarca préstamos, otros créditos por intermediación financiera, créditos por arrendamientos
-> financieros, créditos diversos y otros conceptos, no solo préstamos. El contrato JSON expone el
-> nombre del enunciado.
-
-> **Situación máxima:** el enunciado pide el "máximo valor" del campo 6. Como los códigos del BCRA no
-> siguen un orden numérico de gravedad (p. ej. 21 "Riesgo Bajo" es numéricamente mayor que 05
-> "Irrecuperable"), se interpreta "máxima" como la **situación de mayor gravedad crediticia**, mediante
-> un ranking de severidad documentado. Se persiste y devuelve siempre el código original del BCRA.
-
-### LocalStack
-
-Se usa `localstack/localstack:4.14`, la última versión Community que **no requiere auth token**. Desde
-marzo 2026 LocalStack unificó su imagen y las versiones posteriores exigen una cuenta y un token; usar
-una versión previa mantiene el `docker-compose up` funcionando sin cuentas ni trámites externos. S3 y
-SQS funcionan igual (el SDK de AWS habla la API estándar).
+La notificación se registra en la misma transacción que completa la importación (patrón Outbox) y se
+envía por separado: así una caída del servidor de correo no afecta el resultado de la importación.
 
 ---
 
@@ -336,30 +294,22 @@ hardcodeadas en el repositorio. Se provee `.env.example` como plantilla document
 
 ---
 
-## Alcance y mejoras futuras
+## Alcance
 
-### Implementado
+Funcionalidades implementadas:
 
-- Importador asíncrono y distribuido: `POST /upload` → S3 → SQS → Worker (`BackgroundService`).
+- Importador asíncrono y distribuido: `POST /upload` → S3 → SQS → Worker.
 - Lectura por streaming y parseo del archivo de ancho fijo del BCRA.
 - Ingesta masiva con `COPY` y agregación en PostgreSQL (por deudor y por entidad).
 - API REST de consulta (los tres endpoints del enunciado).
 - Persistencia con EF Core Code First y migraciones versionadas.
 - Resiliencia: reintentos vía SQS, Dead Letter Queue, reproceso idempotente.
-- Notificación de finalización mediante log estructurado (tiempo total y resumen de carga).
+- Notificación de finalización por email (SMTP → Mailpit), registrada transaccionalmente (Outbox)
+  y enviada por un dispatcher con reintentos. Además, log estructurado con tiempo total y resumen.
 - Health check (`/health`) con verificación de PostgreSQL, S3 y SQS, y desglose por dependencia.
 - Interfaz web (React + Vite + MUI) para subir el archivo y consultar deudores y entidades.
 - Contenerización completa con Docker Compose (`docker-compose up`).
-- Tests unitarios (parser, dominio) y de integración (procesamiento contra PostgreSQL real).
-
-### Mejoras futuras (fuera del alcance de esta entrega)
-
-Priorizadas por tiempo; varias corresponden a los _bonus_ del enunciado:
-
-- **CI/CD** (build, tests y análisis estático con SonarQube).
-- **Observabilidad centralizada** (CloudWatch vía LocalStack) con correlación de logs entre servicios.
-- **Notificaciones** por email (Mailpit) y webhook, con _retry_ y _circuit breaker_ (Polly).
-- **Manejo global de errores** con `ProblemDetails` y mensajes localizados.
+- Tests unitarios (parser, dominio, notificaciones) y de integración (procesamiento contra PostgreSQL real).
 
 ---
 
