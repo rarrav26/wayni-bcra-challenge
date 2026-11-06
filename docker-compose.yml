@@ -1,6 +1,17 @@
 services:
   postgres:
     image: postgres:17
+    # Postgres does the heavy lifting (aggregating ~34M staging rows), so it gets the most headroom.
+    mem_limit: 6g
+    # Raise the per-operation sort/hash memory so the aggregation (GROUP BY + DISTINCT ON over ~34M
+    # rows) resolves in RAM instead of spilling heavily to disk. Default work_mem (~4MB) makes the
+    # full-padrón aggregation very I/O bound; these values trade memory for speed.
+    command:
+      - "postgres"
+      - "-c"
+      - "work_mem=512MB"
+      - "-c"
+      - "maintenance_work_mem=1GB"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -19,6 +30,10 @@ services:
     # Last Community version that does NOT require an auth token (4.15+ and the 2026.03+ calendar
     # releases require one). Covers S3 + SQS. See ADR-028.
     image: localstack/localstack:4.14
+    # LocalStack buffers the whole S3 object in memory when serving GetObject, so it needs headroom
+    # above the object size for the multi-GB padrón; 8 GB proved too tight (connection reset mid-read),
+    # 10 GB handles it. Emulator limitation: real S3 streams the object and never loads it into RAM.
+    mem_limit: 10g
     environment:
       SERVICES: s3,sqs
       AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
@@ -40,11 +55,14 @@ services:
     build:
       context: .
       dockerfile: src/WayniBcra.Api/Dockerfile
+    # The API only signs URLs and serves queries; it never streams the file, so little memory.
+    mem_limit: 512m
     environment:
       # Development so Swagger UI is available in the container (demo/evaluation convenience).
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Postgres: ${ConnectionStrings__Postgres}
       Aws__ServiceUrl: ${Aws__ServiceUrl}
+      Aws__PublicServiceUrl: ${Aws__PublicServiceUrl}
       Aws__Region: ${Aws__Region}
       Aws__BucketName: ${Aws__BucketName}
       Aws__QueueName: ${Aws__QueueName}
@@ -64,6 +82,7 @@ services:
     # Local SMTP server that captures emails and exposes them in a web UI (port 8025).
     # Used by the NotificationWorker to deliver import-completion notifications for the demo.
     image: axllent/mailpit:latest
+    mem_limit: 256m
     ports:
       - "1025:1025" # SMTP
       - "8025:8025" # Web UI
@@ -77,12 +96,14 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    environment:
-      # Base URL of the API as seen from the user's BROWSER (host), not from inside the Docker
-      # network. The browser reaches the API via the published port, hence localhost:8080.
-      VITE_API_URL: ${VITE_API_URL}
+      args:
+        # Baked into the static bundle at build time. Base URL of the API as seen from the user's
+        # BROWSER (host): it reaches the API via the published port, hence localhost:8080.
+        VITE_API_URL: ${VITE_API_URL}
+    # Static assets served by nginx: a tiny footprint compared to the Vite dev server.
+    mem_limit: 128m
     ports:
-      - "5173:5173"
+      - "5173:80" # Host 5173 -> nginx :80. Keeps the frontend origin at localhost:5173 (CORS).
     depends_on:
       - api
 
@@ -90,6 +111,8 @@ services:
     build:
       context: .
       dockerfile: src/WayniBcra.Worker/Dockerfile
+    # Streaming pipeline keeps memory bounded (~tens of MB even for the full 6 GB padrón).
+    mem_limit: 512m
     environment:
       DOTNET_ENVIRONMENT: Production
       ConnectionStrings__Postgres: ${ConnectionStrings__Postgres}

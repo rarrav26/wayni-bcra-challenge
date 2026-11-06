@@ -1,7 +1,8 @@
-# Frontend dev server (React + Vite) for docker-compose.
-# Serves the Vite dev server; simple and sufficient for the challenge/evaluation environment.
-# For production, this would instead be a multi-stage build producing static assets served by nginx.
-FROM node:22-alpine
+# Frontend: multi-stage build. Compiles the React/Vite app and serves the static assets with nginx.
+# Production-style: the final image is a small static web server, not the Vite dev server.
+
+# --- Build stage ---
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -9,10 +10,21 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy the rest of the source.
+# The API base URL is baked into the bundle at build time (Vite inlines VITE_* vars during build).
+# Passed as a build arg; defaults to the local API port used by docker-compose.
+ARG VITE_API_URL=http://localhost:8080
+ENV VITE_API_URL=$VITE_API_URL
+
 COPY . .
+RUN npm run build
 
-EXPOSE 5173
+# --- Runtime stage ---
+FROM nginx:1.27-alpine AS runtime
 
-# --host exposes the dev server outside the container (binds 0.0.0.0).
-CMD ["npm", "run", "dev", "--", "--host"]
+# SPA routing + sensible defaults.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+# nginx runs in the foreground by default via its base image CMD.
