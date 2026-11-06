@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
@@ -146,9 +147,10 @@ public sealed class NotificationDispatcher : BackgroundService
 
     private static (string Subject, string Body) BuildEmail(ImportCompletedPayload payload)
     {
+        var culture = CultureInfo.GetCultureInfo("es-AR");
         var subject = $"Importación completada — {payload.FileName}";
         var duration = payload.DurationSeconds is { } s
-            ? $"{s:0.##} segundos"
+            ? FormatDuration(TimeSpan.FromSeconds(s))
             : "n/d";
         var body =
             $"""
@@ -156,11 +158,25 @@ public sealed class NotificationDispatcher : BackgroundService
 
             Archivo: {payload.FileName}
             Import Job ID: {payload.ImportJobId}
-            Deudores procesados: {payload.Debtors}
-            Entidades procesadas: {payload.Entities}
+            Deudores procesados: {payload.Debtors.ToString("N0", culture)}
+            Entidades procesadas: {payload.Entities.ToString("N0", culture)}
             Duración: {duration}
             Finalizada: {payload.CompletedAt:yyyy-MM-dd HH:mm:ss 'UTC'}
             """;
         return (subject, body);
+    }
+
+    // Human-readable duration, e.g. "10 min 21 s" or "1 h 05 min 09 s".
+    private static string FormatDuration(TimeSpan d)
+    {
+        if (d.TotalHours >= 1)
+        {
+            return $"{(int)d.TotalHours} h {d.Minutes:00} min {d.Seconds:00} s";
+        }
+        if (d.TotalMinutes >= 1)
+        {
+            return $"{d.Minutes} min {d.Seconds:00} s";
+        }
+        return $"{d.Seconds} s";
     }
 }
