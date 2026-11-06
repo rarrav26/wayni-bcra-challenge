@@ -33,11 +33,15 @@ public sealed class DeudoresController : ControllerBase
         return Ok(DebtorResponse.FromDomain(debtor));
     }
 
-    /// <summary>GET /deudores/top/{n} — returns the N debtors with the highest total financing.</summary>
+    /// <summary>
+    /// GET /deudores/top/{n} — returns the N debtors with the highest total financing.
+    /// Optional query param <c>situacion</c> filters by max credit status (e.g. ?situacion=05).
+    /// </summary>
     [HttpGet("top/{n:int}")]
     [ProducesResponseType<IEnumerable<DebtorResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<IEnumerable<DebtorResponse>>> GetTop(int n, CancellationToken cancellationToken)
+    public async Task<ActionResult<IEnumerable<DebtorResponse>>> GetTop(
+        int n, [FromQuery] string? situacion, CancellationToken cancellationToken)
     {
         if (n <= 0)
         {
@@ -47,7 +51,7 @@ public sealed class DeudoresController : ControllerBase
                 title: "Parámetro inválido");
         }
 
-        var debtors = await _debtors.GetTopByTotalFinancingAsync(n, cancellationToken);
+        var debtors = await _debtors.GetTopByTotalFinancingAsync(n, situacion, cancellationToken);
         return Ok(debtors.Select(DebtorResponse.FromDomain));
     }
 }

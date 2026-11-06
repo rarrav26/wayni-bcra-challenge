@@ -14,9 +14,10 @@ import {
     TextField,
     Typography,
 } from '@mui/material';
+import MenuItem from '@mui/material/MenuItem';
 import { useState } from 'react';
 import { getDebtor, getTopDebtors } from '../api/debtors';
-import { describeCreditStatus } from '../domain/creditStatus';
+import { CREDIT_STATUS_OPTIONS, describeCreditStatus } from '../domain/creditStatus';
 import { AMOUNT_LABEL, formatAmount } from '../domain/format';
 
 export default function DebtorsTab() {
@@ -28,6 +29,7 @@ export default function DebtorsTab() {
 
   // --- Top N ---
   const [n, setN] = useState('10');
+  const [situacion, setSituacion] = useState(''); // '' = todas (sin filtro)
   const [topDebtors, setTopDebtors] = useState(null);
   const [topError, setTopError] = useState(null);
   const [topLoading, setTopLoading] = useState(false);
@@ -61,7 +63,7 @@ export default function DebtorsTab() {
     setTopDebtors(null);
     setTopError(null);
     try {
-      const data = await getTopDebtors(parsed);
+      const data = await getTopDebtors(parsed, situacion || undefined);
       setTopDebtors(data);
     } catch {
       setTopError('Ocurrió un error al consultar el ranking.');
@@ -144,6 +146,21 @@ export default function DebtorsTab() {
             size="small"
             sx={{ width: 120 }}
           />
+          <TextField
+            label="Situación"
+            select
+            value={situacion}
+            onChange={(e) => setSituacion(e.target.value)}
+            size="small"
+            sx={{ width: 220 }}
+          >
+            <MenuItem value="">Todas</MenuItem>
+            {CREDIT_STATUS_OPTIONS.map((opt) => (
+              <MenuItem key={opt.code} value={opt.code}>
+                {opt.label}
+              </MenuItem>
+            ))}
+          </TextField>
           <Button type="submit" variant="contained" disabled={topLoading}>
             Buscar
           </Button>
