@@ -37,6 +37,10 @@ Accept: application/json
 GET {{host}}/deudores/top/10
 Accept: application/json
 
+### Top N deudores filtrando por situacion crediticia maxima (parametro opcional)
+GET {{host}}/deudores/top/10?situacion=05
+Accept: application/json
+
 ### Entidad financiera por codigo
 GET {{host}}/entidades/00007
 Accept: application/json

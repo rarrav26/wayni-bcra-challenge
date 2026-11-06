@@ -31,12 +31,18 @@ El procesamiento es asíncrono y distribuido, desacoplado mediante una cola de m
 A partir del archivo `deudores.txt` del BCRA, el sistema produce dos agregaciones:
 
 - **Deudores** (agrupados por número de identificación — campo 4):
-  - Situación crediticia máxima entre sus registros (campo 6).
+  - Situación crediticia de mayor gravedad entre sus registros (campo 6).
   - Suma total de financiación (campo 7).
 - **Entidades financieras** (agrupadas por código de entidad — campo 1):
   - Suma total de financiación (campo 7).
 
 Y las expone mediante los endpoints de consulta definidos más abajo.
+
+> **Sobre la "situación máxima":** en la escala del BCRA la situación crediticia no es un valor ordinal
+> (p. ej. "11 — con asistencias" no es peor que "01 — normal"), por lo que tomar el máximo numérico del
+> campo no reflejaría el riesgo real. Se interpreta "máxima" como la de **mayor gravedad crediticia**
+> según un ranking documentado, y se persiste siempre el código original del BCRA. Para un deudor con
+> situaciones "01" y "05" se devuelve "05".
 
 ---
 
@@ -115,7 +121,8 @@ http://localhost:5173
 Permite usar la API desde el navegador, en tres secciones:
 
 - **Subir archivo:** carga el padrón y muestra el identificador del import.
-- **Deudores:** consulta un deudor por identificación y lista el top N por financiación.
+- **Deudores:** consulta un deudor por identificación y lista el top N por financiación, con un filtro
+  opcional por situación crediticia.
 - **Entidades:** consulta una entidad financiera por código.
 
 > La interfaz consume la API vía la variable `VITE_API_URL` (por defecto `http://localhost:8080`, la
@@ -242,6 +249,13 @@ Devuelve los N deudores con mayor suma de financiación, ordenados de mayor a me
 
 ```bash
 curl http://localhost:8080/deudores/top/5
+```
+
+Acepta el parámetro opcional `situacion` para filtrar por situación crediticia máxima (código de 2
+dígitos del BCRA). Devuelve los N deudores con esa situación, ordenados por financiación:
+
+```bash
+curl "http://localhost:8080/deudores/top/5?situacion=05"
 ```
 
 ### `GET /entidades/{codigo}`

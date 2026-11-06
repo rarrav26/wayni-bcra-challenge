@@ -20,10 +20,19 @@ public sealed class DebtorReadRepository : IDebtorReadRepository
             .FirstOrDefaultAsync(d => d.IdentificationNumber == identificationNumber, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Debtor>> GetTopByTotalFinancingAsync(int count, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Debtor>> GetTopByTotalFinancingAsync(
+        int count, string? creditStatus = null, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Debtors
-            .AsNoTracking()
+        var query = _dbContext.Debtors.AsNoTracking();
+
+        // Optional filter by situación: when a status is given, restrict to debtors whose max
+        // credit status matches it. Applied before ordering/paging so the top N is within the filter.
+        if (!string.IsNullOrWhiteSpace(creditStatus))
+        {
+            query = query.Where(d => d.MaxCreditStatus == creditStatus);
+        }
+
+        return await query
             .OrderByDescending(d => d.TotalFinancingAmount)
             .Take(count)
             .ToListAsync(cancellationToken);

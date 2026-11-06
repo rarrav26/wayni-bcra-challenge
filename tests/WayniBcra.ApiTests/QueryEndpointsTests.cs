@@ -78,7 +78,7 @@ public sealed class QueryEndpointsTests : IClassFixture<TestApiFactory>
     public async Task GetTopDebtors_ReturnsListWithSpanishFields()
     {
         _factory.DebtorRepository
-            .GetTopByTotalFinancingAsync(3, Arg.Any<CancellationToken>())
+            .GetTopByTotalFinancingAsync(3, null, Arg.Any<CancellationToken>())
             .Returns(new List<Debtor>
             {
                 new("20000000001", "05", 900.0m),
@@ -99,6 +99,34 @@ public sealed class QueryEndpointsTests : IClassFixture<TestApiFactory>
         Assert.Equal("20000000001", items[0].GetProperty("nro_identificacion").GetString());
         Assert.Equal("05", items[0].GetProperty("situacion_maxima").GetString());
         Assert.Equal(900.0m, items[0].GetProperty("suma_total_prestamos").GetDecimal());
+    }
+
+    [Fact]
+    public async Task GetTopDebtors_WithSituacionFilter_PassesStatusToRepository()
+    {
+        _factory.DebtorRepository
+            .GetTopByTotalFinancingAsync(5, "05", Arg.Any<CancellationToken>())
+            .Returns(new List<Debtor>
+            {
+                new("20000000001", "05", 900.0m),
+                new("20000000009", "05", 300.0m)
+            });
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/deudores/top/5?situacion=05");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        var items = doc.RootElement.EnumerateArray().ToList();
+
+        Assert.Equal(2, items.Count);
+        Assert.All(items, item => Assert.Equal("05", item.GetProperty("situacion_maxima").GetString()));
+
+        // The query param reached the repository as the credit-status filter.
+        await _factory.DebtorRepository.Received(1)
+            .GetTopByTotalFinancingAsync(5, "05", Arg.Any<CancellationToken>());
     }
 
     [Fact]
