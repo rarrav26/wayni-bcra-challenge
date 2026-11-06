@@ -48,6 +48,7 @@ Y las expone mediante los endpoints de consulta definidos más abajo.
 | Mensajería | Amazon SQS (emulado con LocalStack) |
 | Almacenamiento | Amazon S3 (emulado con LocalStack) |
 | Notificaciones | Email vía SMTP (Mailpit) y log estructurado |
+| Observabilidad | Logs estructurados a stdout + CloudWatch Logs (LocalStack), correlados por import |
 | Testing | xUnit (unitarios) + Testcontainers (integración) |
 | Infraestructura | Docker / Docker Compose |
 
@@ -113,9 +114,8 @@ Permite usar la API desde el navegador, en tres secciones:
 
 > La interfaz consume la API vía la variable `VITE_API_URL` (por defecto `http://localhost:8080`, la
 > URL de la API vista desde el navegador). La API habilita CORS para el origen del frontend
-> (`http://localhost:5173`), configurable mediante `Cors__AllowedOrigins__0`. En el compose el frontend
-> corre con el dev server de Vite (suficiente para la evaluación); en producción se serviría como build
-> estático detrás de un servidor web.
+> (`http://localhost:5173`), configurable mediante `Cors__AllowedOrigins__0`. El frontend se construye
+> como sitio estático y se sirve con nginx (imagen liviana, estilo productivo).
 
 ### Notificaciones (Mailpit)
 
@@ -127,6 +127,40 @@ http://localhost:8025
 ```
 
 Subí un archivo desde la interfaz web y, al completarse el procesamiento, el email aparece en Mailpit.
+
+### Logs
+
+Los logs son estructurados (`ILogger`) y se escriben a `stdout` (estándar para contenedores) y, de
+forma centralizada, a **CloudWatch Logs** (emulado con LocalStack). Cada operación de importación lleva
+su `ImportJobId` en todos los logs (API y Worker), de modo que puede trazarse de punta a punta.
+
+**Opción rápida — logs por servicio (stdout):**
+
+```bash
+docker-compose logs -f worker   # o api, postgres, etc.
+```
+
+**Opción centralizada — CloudWatch Logs (API + Worker en un mismo grupo):**
+
+```bash
+# Ver los últimos eventos (API y Worker juntos)
+docker-compose exec localstack awslocal logs filter-log-events --log-group-name wayni-bcra-logs --limit 50
+
+# Trazar una importación concreta por su id (aprovecha la correlación por ImportJobId)
+docker-compose exec localstack awslocal logs filter-log-events \
+  --log-group-name wayni-bcra-logs \
+  --filter-pattern "<importJobId>"
+```
+
+> Se usa `filter-log-events` (compatible con el AWS CLI v1 incluido en la imagen de LocalStack). El
+> logging estructurado a stdout está listo para conectar cualquier backend de observabilidad
+> (CloudWatch, Seq, Datadog) sin tocar el código.
+
+### Probar los endpoints (archivo `requests.http`)
+
+En la raíz hay un archivo `requests.http` con ejemplos listos para ejecutar (extensión *REST Client* de
+VS Code, o el runner `.http` de Visual Studio / Rider). Incluye el flujo completo de carga en dos pasos
+(registrar + `PUT` directo a S3), que Swagger no cubre por completo, y las consultas.
 
 ---
 
@@ -322,6 +356,8 @@ hardcodeadas en el repositorio. Se provee `.env.example` como plantilla document
 Funcionalidades implementadas:
 
 - Importador asíncrono y distribuido: `POST /upload` → S3 → SQS → Worker.
+- Upload directo a S3 mediante URL pre-firmada (el archivo de varios GB no pasa por la API); el
+  procesamiento se dispara por el evento de S3.
 - Lectura por streaming y parseo del archivo de ancho fijo del BCRA.
 - Ingesta masiva con `COPY` y agregación en PostgreSQL (por deudor y por entidad).
 - API REST de consulta (los tres endpoints del enunciado).
@@ -330,6 +366,8 @@ Funcionalidades implementadas:
 - Notificación de finalización por email (SMTP → Mailpit), registrada transaccionalmente (Outbox)
   y enviada por un dispatcher con reintentos. Además, log estructurado con tiempo total y resumen.
 - Health check (`/health`) con verificación de PostgreSQL, S3 y SQS, y desglose por dependencia.
+- Observabilidad: logs estructurados a stdout + CloudWatch Logs (LocalStack) centralizados y correlados
+  por `ImportJobId`.
 - Interfaz web (React + Vite + MUI) para subir el archivo y consultar deudores y entidades.
 - Contenerización completa con Docker Compose (`docker-compose up`).
 - Tests unitarios (parser, dominio, notificaciones) y de integración (procesamiento contra PostgreSQL real).

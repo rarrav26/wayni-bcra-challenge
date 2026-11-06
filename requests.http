@@ -1,0 +1,63 @@
+####################################################################################################
+# Wayni BCRA — ejemplos de requests (REST Client)
+#
+# Compatible con la extensión "REST Client" de VS Code y con el runner .http de Visual Studio / Rider.
+# Levantá el entorno con `docker-compose up --build` antes de ejecutar.
+#
+# El endpoint de carga usa el patrón pre-signed URL: el archivo NO se sube a la API, sino directo a S3.
+# Por eso la carga son DOS pasos (ver sección "Subir archivo"). Swagger solo cubre el paso 1; este
+# archivo cubre el flujo completo, incluido el PUT a S3.
+####################################################################################################
+
+@host = http://localhost:8080
+
+### Health check — estado de las dependencias (PostgreSQL, S3, SQS)
+GET {{host}}/health
+Accept: application/json
+
+
+####################################################################################################
+# Subir archivo (2 pasos)
+####################################################################################################
+
+### Paso 1 — registrar la importación y obtener la URL pre-firmada
+# La respuesta incluye "importJobId" y "uploadUrl". El PUT del paso 2 usa esa uploadUrl.
+# @name upload
+POST {{host}}/upload
+Content-Type: application/json
+
+{
+  "fileName": "deudores.txt"
+}
+
+### Paso 2 — subir el archivo directo a S3 con la URL pre-firmada del paso 1
+# La URL se toma automáticamente de la respuesta del paso 1 (upload.response.body.uploadUrl).
+#
+# Reemplazá la ruta del "<" por la ubicación REAL del archivo del BCRA en TU disco (no viaja en el
+# repo). Ejemplos según tu sistema operativo:
+#   - Windows:    < C:\Users\tu-usuario\Downloads\deudores.txt
+#   - Linux/Mac:  < /home/tu-usuario/deudores.txt
+PUT {{upload.response.body.uploadUrl}}
+Content-Type: application/octet-stream
+
+< C:\Users\tu-usuario\Downloads\deudores.txt
+
+# Tras el PUT, S3 dispara el evento -> SQS -> Worker procesa. El avance se ve en los logs
+# (docker-compose logs -f worker) y la notificación en Mailpit (http://localhost:8025).
+
+
+####################################################################################################
+# Consultas
+####################################################################################################
+
+### Deudor por número de identificación
+GET {{host}}/deudores/20004256337
+Accept: application/json
+
+### Top N deudores por suma de financiación
+GET {{host}}/deudores/top/10
+Accept: application/json
+
+### Entidad financiera por código
+GET {{host}}/entidades/00007
+Accept: application/json
