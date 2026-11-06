@@ -41,6 +41,7 @@ Y las expone mediante los endpoints de consulta definidos más abajo.
 | Área | Tecnología |
 |---|---|
 | Backend | .NET 10, ASP.NET Core, C# |
+| Frontend | React + Vite + MUI (JavaScript) |
 | Arquitectura | Clean Architecture + SOLID |
 | Procesamiento asíncrono | .NET Worker Service (`BackgroundService`) |
 | Persistencia | PostgreSQL + Entity Framework Core (Code First) |
@@ -71,14 +72,16 @@ cp .env.example .env
 docker-compose up --build
 ```
 
-Eso levanta cuatro servicios:
+Eso levanta cinco servicios:
 
 - **PostgreSQL** (puerto 5432): base de datos.
 - **LocalStack** (puerto 4566): emula S3 y SQS. Al arrancar crea el bucket, la cola y la DLQ.
 - **API** (puerto 8080): expone los endpoints. Aplica las migraciones al iniciar.
 - **Worker**: consume la cola y procesa los archivos.
+- **Frontend** (puerto 5173): interfaz web para subir el archivo y consultar resultados.
 
-Una vez levantado, la API queda disponible en `http://localhost:8080`.
+Una vez levantado, la API queda disponible en `http://localhost:8080` y la interfaz web en
+`http://localhost:5173`.
 
 ### Swagger
 
@@ -93,6 +96,26 @@ Desde ahí se pueden probar todos los endpoints, incluido el upload del archivo.
 > El servicio `api` corre con `ASPNETCORE_ENVIRONMENT=Development` en el compose para que Swagger UI
 > esté disponible dentro del contenedor (comodidad para la evaluación). En un entorno productivo se
 > correría en `Production` y Swagger no se expondría.
+
+### Interfaz web
+
+Una interfaz web sencilla (React + Vite + MUI) queda disponible en:
+
+```
+http://localhost:5173
+```
+
+Permite usar la API desde el navegador, en tres secciones:
+
+- **Subir archivo:** carga el padrón y muestra el identificador del import.
+- **Deudores:** consulta un deudor por identificación y lista el top N por financiación.
+- **Entidades:** consulta una entidad financiera por código.
+
+> La interfaz consume la API vía la variable `VITE_API_URL` (por defecto `http://localhost:8080`, la
+> URL de la API vista desde el navegador). La API habilita CORS para el origen del frontend
+> (`http://localhost:5173`), configurable mediante `Cors__AllowedOrigins__0`. En el compose el frontend
+> corre con el dev server de Vite (suficiente para la evaluación); en producción se serviría como build
+> estático detrás de un servidor web.
 
 ---
 
@@ -325,6 +348,7 @@ hardcodeadas en el repositorio. Se provee `.env.example` como plantilla document
 - Resiliencia: reintentos vía SQS, Dead Letter Queue, reproceso idempotente.
 - Notificación de finalización mediante log estructurado (tiempo total y resumen de carga).
 - Health check (`/health`) con verificación de PostgreSQL, S3 y SQS, y desglose por dependencia.
+- Interfaz web (React + Vite + MUI) para subir el archivo y consultar deudores y entidades.
 - Contenerización completa con Docker Compose (`docker-compose up`).
 - Tests unitarios (parser, dominio) y de integración (procesamiento contra PostgreSQL real).
 
@@ -332,7 +356,6 @@ hardcodeadas en el repositorio. Se provee `.env.example` como plantilla document
 
 Priorizadas por tiempo; varias corresponden a los _bonus_ del enunciado:
 
-- **Interfaz de administración** (frontend React + Vite).
 - **CI/CD** (build, tests y análisis estático con SonarQube).
 - **Observabilidad centralizada** (CloudWatch vía LocalStack) con correlación de logs entre servicios.
 - **Notificaciones** por email (Mailpit) y webhook, con _retry_ y _circuit breaker_ (Polly).
