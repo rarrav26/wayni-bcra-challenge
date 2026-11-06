@@ -27,7 +27,7 @@ Content-Type: application/json
 // - Usar --data-binary con "@" (NO -d): preserva los saltos de linea del
 //   formato de ancho fijo del BCRA.
 //
-// Alternativa sin curl: subir el archivo desde el frontend (http://localhost:3000).
+// Alternativa sin curl: subir el archivo desde el frontend (http://localhost:5173).
 
 // ### Deudor por numero de identificacion
 GET {{host}}/deudores/20004256337
