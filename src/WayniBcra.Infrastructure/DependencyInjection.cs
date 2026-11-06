@@ -6,9 +6,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WayniBcra.Application.Imports;
+using WayniBcra.Application.Notifications;
 using WayniBcra.Application.Queries;
 using WayniBcra.Infrastructure.Aws;
 using WayniBcra.Infrastructure.Imports;
+using WayniBcra.Infrastructure.Notifications;
 using WayniBcra.Infrastructure.Persistence;
 using WayniBcra.Infrastructure.Persistence.Repositories;
 
@@ -34,8 +36,12 @@ public static class DependencyInjection
         services.AddScoped<IImportRecordReader, BcraImportRecordReader>();
         services.AddScoped<IImportProcessor, NpgsqlImportProcessor>();
         services.AddScoped<IImportJobRepository, ImportJobRepository>();
+        services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IDebtorReadRepository, DebtorReadRepository>();
         services.AddScoped<IFinancialEntityReadRepository, FinancialEntityReadRepository>();
+
+        services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
+        services.AddScoped<IEmailSender, SmtpEmailSender>();
 
         AddAwsServices(services, configuration);
 
