@@ -20,6 +20,10 @@ public class ProcessImportHandlerTests
         _outboxRepository,
         NullLogger<ProcessImportHandler>.Instance);
 
+    // Stream factory that always returns an empty stream (the reader is mocked anyway).
+    private static Func<CancellationToken, Task<Stream>> OpenNull()
+        => _ => Task.FromResult<Stream>(Stream.Null);
+
     private static async IAsyncEnumerable<BcraRecord> EmptyRecords()
     {
         await Task.CompletedTask;
@@ -39,7 +43,7 @@ public class ProcessImportHandlerTests
         await _outboxRepository.AddAsync(Arg.Do<OutboxMessage>(m => staged = m), Arg.Any<CancellationToken>());
 
         var handler = CreateHandler();
-        await handler.HandleAsync(job.Id, Stream.Null);
+        await handler.HandleAsync(job.Id, OpenNull());
 
         // An outbox message was staged for this import, as an email notification.
         Assert.NotNull(staged);
@@ -70,7 +74,7 @@ public class ProcessImportHandlerTests
             Arg.Any<CancellationToken>());
 
         var handler = CreateHandler();
-        await handler.HandleAsync(job.Id, Stream.Null);
+        await handler.HandleAsync(job.Id, OpenNull());
 
         // The job is Completed, and the outbox was staged after the Start() SaveChanges (count == 1)
         // but before the completion SaveChanges (which brings the total to 2). So exactly one
@@ -91,7 +95,7 @@ public class ProcessImportHandlerTests
 
         var handler = CreateHandler();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(job.Id, Stream.Null));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(job.Id, OpenNull()));
 
         // No notification should be staged for a failed import.
         await _outboxRepository.DidNotReceive().AddAsync(Arg.Any<OutboxMessage>(), Arg.Any<CancellationToken>());
@@ -106,6 +110,60 @@ public class ProcessImportHandlerTests
 
         var handler = CreateHandler();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(missingId, Stream.Null));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(missingId, OpenNull()));
+    }
+
+    [Fact]
+    public async Task HandleAsync_WhenDownloadFailsTransiently_RetriesAndCompletes()
+    {
+        // The first attempt to open the stream throws an IOException (e.g. connection reset mid-read);
+        // the handler should retry, re-open the stream, and complete successfully.
+        var job = ImportJob.Create("deudores.txt");
+        _importJobRepository.GetByIdAsync(job.Id, Arg.Any<CancellationToken>()).Returns(job);
+        _recordReader.ReadAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>()).Returns(EmptyRecords());
+        _importProcessor.ProcessAsync(job.Id, Arg.Any<IAsyncEnumerable<BcraRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(new ImportResult { ProcessedRecords = 5, AggregatedDebtors = 5, AggregatedEntities = 1 });
+
+        var openAttempts = 0;
+        Func<CancellationToken, Task<Stream>> openStream = _ =>
+        {
+            openAttempts++;
+            if (openAttempts == 1)
+            {
+                throw new IOException("connection reset by peer");
+            }
+            return Task.FromResult<Stream>(Stream.Null);
+        };
+
+        var handler = CreateHandler();
+        await handler.HandleAsync(job.Id, openStream);
+
+        // It retried the open (2 attempts) and completed.
+        Assert.Equal(2, openAttempts);
+        Assert.Equal(ImportStatus.Completed, job.Status);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WhenDownloadKeepsFailing_FailsAfterRetries()
+    {
+        // Every attempt to open the stream throws IOException; after exhausting retries the import
+        // is marked Failed and the error rethrown.
+        var job = ImportJob.Create("deudores.txt");
+        _importJobRepository.GetByIdAsync(job.Id, Arg.Any<CancellationToken>()).Returns(job);
+
+        var openAttempts = 0;
+        Func<CancellationToken, Task<Stream>> openStream = _ =>
+        {
+            openAttempts++;
+            throw new IOException("connection reset by peer");
+        };
+
+        var handler = CreateHandler();
+
+        await Assert.ThrowsAsync<IOException>(() => handler.HandleAsync(job.Id, openStream));
+
+        Assert.True(openAttempts >= 2, "should have retried the download");
+        Assert.Equal(ImportStatus.Failed, job.Status);
+        await _outboxRepository.DidNotReceive().AddAsync(Arg.Any<OutboxMessage>(), Arg.Any<CancellationToken>());
     }
 }
