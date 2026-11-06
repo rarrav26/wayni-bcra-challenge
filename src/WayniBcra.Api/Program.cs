@@ -13,6 +13,21 @@ builder.Services.AddOpenApi();
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
+// CORS for the frontend (React + Vite). Allowed origins come from config
+// (Cors:AllowedOrigins as an array; in Docker via Cors__AllowedOrigins__0, ...),
+// defaulting to the local Vite dev server.
+const string FrontendCorsPolicy = "FrontendCorsPolicy";
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:5173" };
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(FrontendCorsPolicy, policy =>
+        policy.WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+});
+
 // Health checks exposed at /health:
 //  - PostgreSQL uses the community AspNetCore.HealthChecks.NpgSql package (the standard choice).
 //  - S3 and SQS use custom checks (S3HealthCheck / SqsHealthCheck) for a uniform approach: both
@@ -49,6 +64,8 @@ if (app.Environment.IsDevelopment())
     // Convenience: redirect the root to the Swagger UI in development.
     app.MapGet("/", () => Results.Redirect("/swagger"));
 }
+
+app.UseCors(FrontendCorsPolicy);
 
 app.UseAuthorization();
 

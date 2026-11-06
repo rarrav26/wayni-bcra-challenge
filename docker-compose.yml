@@ -50,6 +50,8 @@ services:
       Aws__QueueName: ${Aws__QueueName}
       Aws__AccessKey: ${Aws__AccessKey}
       Aws__SecretKey: ${Aws__SecretKey}
+      # CORS: allow the frontend origin (as seen from the browser).
+      Cors__AllowedOrigins__0: ${Cors__AllowedOrigins__0}
     ports:
       - "8080:8080"
     depends_on:
@@ -57,6 +59,19 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      # Base URL of the API as seen from the user's BROWSER (host), not from inside the Docker
+      # network. The browser reaches the API via the published port, hence localhost:8080.
+      VITE_API_URL: ${VITE_API_URL}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
 
   worker:
     build:
