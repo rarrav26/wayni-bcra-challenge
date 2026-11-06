@@ -18,6 +18,7 @@ El procesamiento es asíncrono y distribuido, desacoplado mediante una cola de m
   - [Logs](#logs)
   - [Probar los endpoints (archivo `.http`)](#probar-los-endpoints-archivo-http)
 - [Endpoints](#endpoints)
+  - [Manejo de errores](#manejo-de-errores)
 - [Arquitectura](#arquitectura)
 - [Testing](#testing)
 - [Configuración](#configuración)
@@ -368,7 +369,7 @@ Hay tres proyectos de tests:
   transitorios).
 - **Integración** (`WayniBcra.IntegrationTests`): el procesamiento completo (`COPY` + agregación SQL)
   contra un PostgreSQL real (Testcontainers), cubriendo el ranking de gravedad, los totales por entidad y
-  la idempotencia del reproceso.
+  la idempotencia del reproceso; y la consulta de deudores con el filtro opcional por situación.
 - **API** (`WayniBcra.ApiTests`): rutas y status de los endpoints, los nombres JSON en español del
   contrato, y las respuestas de error (ProblemDetails), con `WebApplicationFactory`.
 
@@ -402,7 +403,7 @@ Funcionalidades implementadas:
   procesamiento se dispara por el evento de S3.
 - Lectura por streaming y parseo del archivo de ancho fijo del BCRA.
 - Ingesta masiva con `COPY` y agregación en PostgreSQL (por deudor y por entidad).
-- API REST de consulta (los tres endpoints del enunciado).
+- API REST de consulta (los tres endpoints del enunciado), con filtro opcional por situación en el top N.
 - Persistencia con EF Core Code First y migraciones versionadas.
 - Resiliencia: reintentos vía SQS, Dead Letter Queue, reproceso idempotente.
 - Notificación de finalización por email (SMTP → Mailpit), registrada transaccionalmente (Outbox)
