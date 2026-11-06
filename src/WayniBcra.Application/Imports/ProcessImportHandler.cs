@@ -49,6 +49,11 @@ public sealed class ProcessImportHandler
         Func<CancellationToken, Task<Stream>> openStream,
         CancellationToken cancellationToken = default)
     {
+        // Correlate every log emitted while handling this import (here, the processor, the reader)
+        // with the import job id, so the whole operation can be traced end to end. The message-template
+        // form is rendered by the console logger and exposes ImportJobId as a structured field.
+        using var logScope = _logger.BeginScope("ImportJobId:{ImportJobId}", importJobId);
+
         var importJob = await _importJobRepository.GetByIdAsync(importJobId, cancellationToken);
         if (importJob is null)
         {

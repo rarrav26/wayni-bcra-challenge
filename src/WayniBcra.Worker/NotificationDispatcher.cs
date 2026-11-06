@@ -107,6 +107,10 @@ public sealed class NotificationDispatcher : BackgroundService
         string toAddress,
         CancellationToken cancellationToken)
     {
+        // Correlate the dispatch logs with the import they notify about, so an import can be traced
+        // end to end (processing + notification) by its id.
+        using var logScope = _logger.BeginScope("ImportJobId:{ImportJobId}", message.ImportJobId);
+
         try
         {
             var payload = ImportCompletedPayload.FromJson(message.Payload);
@@ -166,7 +170,7 @@ public sealed class NotificationDispatcher : BackgroundService
         return (subject, body);
     }
 
-    // Human-readable duration, e.g. "10 min 21 s" or "1 h 05 min 09 s".
+    // Human-readable duration, e.g. "1 h 05 min 09 s", "10 min 21 s", "42 s" or "0,32 s".
     private static string FormatDuration(TimeSpan d)
     {
         if (d.TotalHours >= 1)
@@ -177,6 +181,11 @@ public sealed class NotificationDispatcher : BackgroundService
         {
             return $"{d.Minutes} min {d.Seconds:00} s";
         }
-        return $"{d.Seconds} s";
+        if (d.TotalSeconds >= 1)
+        {
+            return $"{d.Seconds} s";
+        }
+        // Sub-second imports (e.g. small test files): show fractional seconds instead of "0 s".
+        return string.Format(CultureInfo.GetCultureInfo("es-AR"), "{0:0.##} s", d.TotalSeconds);
     }
 }
