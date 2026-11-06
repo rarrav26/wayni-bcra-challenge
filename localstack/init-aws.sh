@@ -10,6 +10,11 @@ QUEUE_NAME="${AWS_QUEUE_NAME:-wayni-bcra-import-queue}"
 DLQ_NAME="${AWS_DLQ_NAME:-wayni-bcra-import-dlq}"
 MAX_RECEIVE_COUNT="${AWS_MAX_RECEIVE_COUNT:-3}"
 VISIBILITY_TIMEOUT="${AWS_VISIBILITY_TIMEOUT:-900}"
+LOG_GROUP="${AWS_LOG_GROUP:-wayni-bcra-logs}"
+
+echo "Ensuring CloudWatch log group: ${LOG_GROUP}"
+awslocal logs create-log-group --log-group-name "${LOG_GROUP}" 2>/dev/null \
+  || echo "Log group ${LOG_GROUP} already exists, skipping creation."
 
 echo "Ensuring S3 bucket: ${BUCKET_NAME}"
 if ! awslocal s3api head-bucket --bucket "${BUCKET_NAME}" 2>/dev/null; then

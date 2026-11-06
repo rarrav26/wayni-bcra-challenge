@@ -27,4 +27,7 @@ public sealed class AwsOptions
 
     /// <summary>SQS queue for import messages.</summary>
     public string QueueName { get; set; } = "wayni-bcra-import-queue";
+
+    /// <summary>CloudWatch Logs group where application logs are centralized (API + Worker).</summary>
+    public string LogGroup { get; set; } = "wayni-bcra-logs";
 }
