@@ -1,6 +1,42 @@
-@WayniBcra.Api_HostAddress = http://localhost:5124
+@host=http://localhost:8080
 
-GET {{WayniBcra.Api_HostAddress}}/weatherforecast/
+### Health check: estado de las dependencias (PostgreSQL, S3, SQS)
+GET {{host}}/health
 Accept: application/json
 
-###
+### Subir archivo (paso 1): registrar la importacion y obtener la URL pre-firmada
+// La respuesta incluye "importJobId": anotarlo. Sirve para trazar esta importacion
+// en CloudWatch Logs (filter-pattern con ese id); el comando esta en el README.
+POST {{host}}/upload
+Content-Type: application/json
+
+{
+  "fileName": "deudores.txt"
+}
+
+### Subir archivo (paso 2): subir el archivo directo a S3 con la URL del paso 1
+//
+// IMPORTANTE: este paso NO se hace con "Send Request". El cliente .http de Visual
+// Studio no envia bien el cuerpo binario (sube un objeto de 0 bytes). Usar curl:
+//
+//   curl.exe -X PUT "PEGAR-uploadUrl-COMPLETA-DEL-PASO-1" --data-binary "@C:\ruta\real\al\deudores.txt" -H "Content-Type: application/octet-stream"
+//
+// Notas:
+// - La uploadUrl es el valor COMPLETO devuelto en el paso 1 (ya incluye
+//   http://localhost:4566/...; no anteponer nada). Caduca a los 30 minutos.
+// - Usar --data-binary con "@" (NO -d): preserva los saltos de linea del
+//   formato de ancho fijo del BCRA.
+//
+// Alternativa sin curl: subir el archivo desde el frontend (http://localhost:3000).
+
+// ### Deudor por numero de identificacion
+GET {{host}}/deudores/20004256337
+Accept: application/json
+
+### Top N deudores por suma de financiacion
+GET {{host}}/deudores/top/10
+Accept: application/json
+
+### Entidad financiera por codigo
+GET {{host}}/entidades/00007
+Accept: application/json

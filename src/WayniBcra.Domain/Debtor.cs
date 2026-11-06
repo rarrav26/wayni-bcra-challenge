@@ -14,7 +14,7 @@ public sealed class Debtor
 
     /// <summary>
     /// Credit status of highest credit severity (field 6) across the debtor's records,
-    /// selected via the severity ranking (see ADR-014). The original 2-digit BCRA code is stored
+    /// selected via the severity ranking. The original 2-digit BCRA code is stored
     /// (e.g. "01", "05", "11"), never the ranking value.
     /// </summary>
     public string MaxCreditStatus { get; private set; }

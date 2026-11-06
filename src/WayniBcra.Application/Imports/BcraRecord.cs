@@ -6,8 +6,8 @@ namespace WayniBcra.Application.Imports;
 /// stage from the physical layout of the TXT file.
 /// </summary>
 /// <remarks>
-/// Fixed-width fields are kept as strings, preserving their original format (padding, leading zeros),
-/// per the unified string criterion (ADR-013). The only numeric field is the financing amount,
+/// Fixed-width fields are kept as strings, preserving their original format (padding, leading zeros).
+/// The only numeric field is the financing amount,
 /// which is parsed to <see cref="decimal"/> because it is summed during aggregation.
 /// </remarks>
 public sealed record BcraRecord

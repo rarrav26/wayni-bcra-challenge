@@ -75,7 +75,8 @@ if (app.Environment.IsDevelopment())
     });
 
     // Convenience: redirect the root to the Swagger UI in development.
-    app.MapGet("/", () => Results.Redirect("/swagger"));
+    // ExcludeFromDescription keeps the redirect working but hides it from the OpenAPI doc.
+    app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 }
 
 app.UseCors(FrontendCorsPolicy);

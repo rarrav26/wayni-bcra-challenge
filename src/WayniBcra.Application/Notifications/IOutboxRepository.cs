@@ -4,7 +4,7 @@ namespace WayniBcra.Application.Notifications;
 
 /// <summary>
 /// Persistence for <see cref="OutboxMessage"/> (Transactional Outbox). Exposes only what the
-/// import flow and the notification dispatcher need (no generic CRUD, per ADR-020).
+/// import flow and the notification dispatcher need (no generic CRUD).
 /// </summary>
 public interface IOutboxRepository
 {

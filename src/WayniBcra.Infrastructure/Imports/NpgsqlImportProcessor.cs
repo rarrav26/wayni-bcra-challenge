@@ -9,7 +9,7 @@ namespace WayniBcra.Infrastructure.Imports;
 
 /// <summary>
 /// Ingests records into the staging table using PostgreSQL COPY (binary), then aggregates them
-/// into the final tables (debtors, financial_entities) within a single transaction (ADR-019).
+/// into the final tables (debtors, financial_entities) within a single transaction.
 /// Idempotent per import via staging cleanup + upsert.
 /// </summary>
 public sealed class NpgsqlImportProcessor : IImportProcessor
@@ -115,8 +115,10 @@ public sealed class NpgsqlImportProcessor : IImportProcessor
     }
 
     // Debtors: aggregate by identification_number. Sum the financing amount, and pick the credit status
-    // of highest credit severity via the ranking (ADR-014). The original BCRA code is stored, never the
-    // ranking value. Unknown codes get priority -1 (lowest) so they never win as "worst" (ADR-019).
+    // of highest credit severity via the ranking below. The original BCRA code is stored, never the
+    // ranking value. Unknown codes get priority -1 (lowest) so they never win as "worst".
+    // DISTINCT ON + ORDER BY ... DESC is the Postgres idiom to keep, per identification_number, the
+    // single row whose status ranks highest in the CASE expression.
     private static async Task<int> AggregateDebtorsAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid importJobId, CancellationToken ct)
     {

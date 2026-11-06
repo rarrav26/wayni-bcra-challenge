@@ -8,7 +8,7 @@ namespace WayniBcra.IntegrationTests;
 /// <summary>
 /// Integration tests for <see cref="NpgsqlImportProcessor"/> against a real PostgreSQL (Testcontainers).
 /// Validates the COPY ingestion and the SQL aggregation: financing sums and the credit-status severity
-/// ranking (ADR-014), including the unknown-code fallback (ADR-019).
+/// ranking, including the unknown-code fallback.
 /// </summary>
 public sealed class NpgsqlImportProcessorTests : IClassFixture<PostgresFixture>
 {

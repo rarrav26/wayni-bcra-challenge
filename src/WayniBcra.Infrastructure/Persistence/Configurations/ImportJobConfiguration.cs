@@ -13,7 +13,7 @@ public sealed class ImportJobConfiguration : IEntityTypeConfiguration<ImportJob>
         builder.HasKey(j => j.Id);
 
         builder.Property(j => j.Id)
-            .ValueGeneratedNever(); // Guid generated in the domain (ADR-011), not by the DB.
+            .ValueGeneratedNever(); // Guid generated in the domain, not by the DB.
 
         builder.Property(j => j.FileName)
             .HasMaxLength(260)

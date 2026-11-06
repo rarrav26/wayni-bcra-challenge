@@ -8,7 +8,7 @@ namespace WayniBcra.Infrastructure.Aws;
 
 /// <summary>
 /// SQS-backed publisher for import messages. The queue is assumed to exist (provisioned by the
-/// LocalStack init script, ADR-026). Serializes the message as JSON.
+/// LocalStack init script). Serializes the message as JSON.
 /// </summary>
 public sealed class SqsImportQueuePublisher : IImportQueuePublisher
 {

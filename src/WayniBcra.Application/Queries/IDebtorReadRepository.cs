@@ -4,7 +4,7 @@ namespace WayniBcra.Application.Queries;
 
 /// <summary>
 /// Read-only access to debtor aggregates for the query endpoints. Exposes only the operations used
-/// (lookup by identification number, top N by total financing). No generic CRUD (ADR-020).
+/// (lookup by identification number, top N by total financing). No generic CRUD.
 /// </summary>
 public interface IDebtorReadRepository
 {

@@ -16,12 +16,12 @@ public sealed class DebtorConfiguration : IEntityTypeConfiguration<Debtor>
             .HasMaxLength(11)
             .IsRequired();
 
-        // 2-digit BCRA status code, stored as string (ADR-013).
+        // 2-digit BCRA status code, stored as string to preserve its original format.
         builder.Property(d => d.MaxCreditStatus)
             .HasMaxLength(2)
             .IsRequired();
 
-        // Aggregate sum: generous precision (ADR, numeric(20,1)).
+        // Aggregate sum across all of a debtor's records: generous precision to avoid overflow.
         builder.Property(d => d.TotalFinancingAmount)
             .HasPrecision(20, 1);
 
