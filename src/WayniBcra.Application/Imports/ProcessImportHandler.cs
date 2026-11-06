@@ -77,6 +77,7 @@ public sealed class ProcessImportHandler
             var payload = new ImportCompletedPayload(
                 importJob.Id,
                 importJob.FileName,
+                result.ProcessedRecords,
                 result.AggregatedDebtors,
                 result.AggregatedEntities,
                 importJob.Duration?.TotalSeconds,

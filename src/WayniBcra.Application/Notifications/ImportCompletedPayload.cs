@@ -10,6 +10,7 @@ namespace WayniBcra.Application.Notifications;
 public sealed record ImportCompletedPayload(
     Guid ImportJobId,
     string FileName,
+    long Records,
     int Debtors,
     int Entities,
     double? DurationSeconds,

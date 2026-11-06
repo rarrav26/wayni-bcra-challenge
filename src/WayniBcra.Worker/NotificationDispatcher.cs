@@ -162,6 +162,7 @@ public sealed class NotificationDispatcher : BackgroundService
 
             Archivo: {payload.FileName}
             Import Job ID: {payload.ImportJobId}
+            Registros procesados: {payload.Records.ToString("N0", culture)}
             Deudores procesados: {payload.Debtors.ToString("N0", culture)}
             Entidades procesadas: {payload.Entities.ToString("N0", culture)}
             Duración: {duration}
