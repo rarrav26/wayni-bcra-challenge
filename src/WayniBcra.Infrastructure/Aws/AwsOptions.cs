@@ -11,6 +11,14 @@ public sealed class AwsOptions
     /// <summary>LocalStack endpoint (e.g. http://localhost:4566). Empty/null means real AWS.</summary>
     public string? ServiceUrl { get; set; }
 
+    /// <summary>
+    /// Endpoint used when signing pre-signed URLs handed to the browser. In Docker, the API talks to
+    /// LocalStack as "localstack:4566" (internal), but the browser can only reach it as
+    /// "localhost:4566"; so pre-signed URLs must be signed against this public endpoint. Falls back
+    /// to <see cref="ServiceUrl"/> when not set (e.g. real AWS, where both are the same).
+    /// </summary>
+    public string? PublicServiceUrl { get; set; }
+
     /// <summary>AWS region. Required by the SDK even for LocalStack (which ignores it).</summary>
     public string Region { get; set; } = "us-east-1";
 

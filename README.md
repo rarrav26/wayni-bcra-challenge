@@ -137,18 +137,41 @@ enunciado (`nro_identificacion`, `situacion_maxima`, `suma_total_prestamos`, `co
 
 ### `POST /upload`
 
-Carga el archivo del BCRA e inicia el procesamiento asíncrono. Recibe el archivo como
-`multipart/form-data` (campo `file`). Responde `202 Accepted` con el id del import.
+Inicia una importación. **No recibe el archivo**: el padrón del BCRA pesa varios GB, así que el archivo
+se sube **directamente a S3** mediante una URL pre-firmada (patrón _pre-signed URL_), sin pasar por la
+API. El upload se hace en dos pasos:
+
+**Paso 1 — registrar la importación y obtener la URL.** Se envía solo el nombre del archivo; responde
+`202 Accepted` con el id del import y la URL pre-firmada:
 
 ```bash
-curl -F "file=@deudores.txt" http://localhost:8080/upload
+curl -X POST http://localhost:8080/upload \
+  -H "Content-Type: application/json" \
+  -d '{ "fileName": "deudores.txt" }'
 ```
 
 ```json
-{ "importJobId": "eb598c34-9d5d-4e94-a635-9861c2dbad78" }
+{
+  "importJobId": "eb598c34-9d5d-4e94-a635-9861c2dbad78",
+  "uploadUrl": "http://localhost:4566/wayni-bcra-imports/imports/eb59.../deudores.txt?X-Amz-..."
+}
 ```
 
-El procesamiento ocurre en segundo plano (Worker). El estado del import se registra en la base.
+**Paso 2 — subir el archivo a la URL pre-firmada** (PUT directo a S3). Reemplazá la URL por el valor
+`uploadUrl` del paso anterior (entre comillas, por los `&` del query string):
+
+```bash
+curl -X PUT --upload-file deudores.txt "http://localhost:4566/wayni-bcra-imports/imports/eb59.../deudores.txt?X-Amz-..."
+```
+
+Al completarse el upload, S3 emite un evento que dispara el procesamiento asíncrono (S3 → SQS → Worker).
+El estado del import se registra en la base y, al finalizar, se envía la notificación por email.
+
+> **Interfaz web:** la página de carga encadena estos dos pasos de forma transparente — se elige el
+> archivo y se sube con un solo clic. Los dos pasos manuales (arriba) aplican al usar `curl`/Postman.
+>
+> **Swagger:** el paso 1 se puede ejecutar desde Swagger UI; el paso 2 (PUT a S3) no, porque la URL no
+> pertenece a la API. Usá la interfaz web o `curl` para la subida.
 
 ### `GET /deudores/{cuit}`
 

@@ -32,12 +32,22 @@ public sealed class ProcessImportHandler
         _logger = logger;
     }
 
+    // How many times to retry opening + reading + ingesting the file when the download stream fails
+    // transiently (e.g. the object store resets the connection mid-read). Each attempt re-opens the
+    // stream and re-ingests from scratch; this is safe because ingestion is idempotent per import
+    // (staging is truncated before each COPY, ADR-016).
+    private const int MaxDownloadAttempts = 3;
+
     /// <summary>
-    /// Processes the import identified by <paramref name="importJobId"/> reading from
-    /// <paramref name="fileStream"/>. On failure, marks the job as failed and rethrows so the
-    /// queue can retry (idempotent reprocessing, ADR-016).
+    /// Processes the import identified by <paramref name="importJobId"/>. <paramref name="openStream"/>
+    /// opens the source file (re-invocable so a transient download failure can be retried from the
+    /// start). On persistent failure, marks the job as failed and rethrows so the queue can retry
+    /// (idempotent reprocessing, ADR-016).
     /// </summary>
-    public async Task HandleAsync(Guid importJobId, Stream fileStream, CancellationToken cancellationToken = default)
+    public async Task HandleAsync(
+        Guid importJobId,
+        Func<CancellationToken, Task<Stream>> openStream,
+        CancellationToken cancellationToken = default)
     {
         var importJob = await _importJobRepository.GetByIdAsync(importJobId, cancellationToken);
         if (importJob is null)
@@ -53,8 +63,7 @@ public sealed class ProcessImportHandler
 
         try
         {
-            var records = _recordReader.ReadAsync(fileStream, cancellationToken);
-            var result = await _importProcessor.ProcessAsync(importJob.Id, records, cancellationToken);
+            var result = await IngestWithRetryAsync(importJob.Id, openStream, cancellationToken);
 
             importJob.Complete(result.AggregatedDebtors, result.AggregatedEntities);
 
@@ -83,6 +92,35 @@ public sealed class ProcessImportHandler
 
             _logger.LogError(ex, "Import {ImportJobId} failed.", importJob.Id);
             throw;
+        }
+    }
+
+    // Opens the stream and ingests it, retrying from scratch on a transient download/IO failure
+    // (connection reset mid-read is common with large objects). Ingestion is idempotent per import,
+    // so re-running is safe. Non-IO errors (e.g. bad data) are not retried here.
+    private async Task<ImportResult> IngestWithRetryAsync(
+        Guid importJobId,
+        Func<CancellationToken, Task<Stream>> openStream,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await using var stream = await openStream(cancellationToken);
+                var records = _recordReader.ReadAsync(stream, cancellationToken);
+                return await _importProcessor.ProcessAsync(importJobId, records, cancellationToken);
+            }
+            catch (IOException ex) when (attempt < MaxDownloadAttempts)
+            {
+                // Transient I/O failure reading the download (e.g. connection reset). Back off and
+                // retry the whole ingest from the start.
+                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)); // 1s, 2s, ...
+                _logger.LogWarning(ex,
+                    "Transient I/O error ingesting import {ImportJobId} (attempt {Attempt}/{Max}); retrying in {Delay}.",
+                    importJobId, attempt, MaxDownloadAttempts, delay);
+                await Task.Delay(delay, cancellationToken);
+            }
         }
     }
 }

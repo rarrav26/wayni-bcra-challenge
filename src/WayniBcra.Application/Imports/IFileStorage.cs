@@ -7,9 +7,12 @@ namespace WayniBcra.Application.Imports;
 public interface IFileStorage
 {
     /// <summary>
-    /// Uploads a file and returns the storage key under which it was stored.
+    /// Creates a pre-signed URL that lets the client upload (HTTP PUT) directly to storage, without
+    /// the file passing through the API. Used for large files (the BCRA padrón is several GB).
     /// </summary>
-    Task<string> UploadAsync(string fileName, Stream content, CancellationToken cancellationToken = default);
+    /// <param name="objectKey">The key the client will upload to.</param>
+    /// <param name="expiresIn">How long the URL remains valid.</param>
+    Task<string> CreateUploadUrlAsync(string objectKey, TimeSpan expiresIn, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Opens a read stream for a previously stored file.

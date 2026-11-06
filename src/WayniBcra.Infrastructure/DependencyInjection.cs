@@ -72,6 +72,26 @@ public static class DependencyInjection
             return new AmazonS3Client(credentials, config);
         });
 
+        // Separate S3 client used ONLY to sign pre-signed URLs for the browser, against the public
+        // endpoint (PublicServiceUrl, e.g. localhost:4566). Falls back to the internal ServiceUrl.
+        services.AddSingleton<IS3Presigner>(_ =>
+        {
+            var publicUrl = awsOptions.PublicServiceUrl ?? awsOptions.ServiceUrl;
+            var useHttp = !string.IsNullOrWhiteSpace(publicUrl)
+                && publicUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+            var config = new AmazonS3Config { AuthenticationRegion = awsOptions.Region };
+            if (!string.IsNullOrWhiteSpace(publicUrl))
+            {
+                config.ServiceURL = publicUrl;
+                config.ForcePathStyle = true;
+                config.UseHttp = useHttp;
+            }
+
+            // The URL scheme is forced per-request (GetPreSignedUrlRequest.Protocol); UseHttp is passed
+            // so S3FileStorage can set it. LocalStack serves plain HTTP, so https:// would fail TLS.
+            return new S3Presigner(new AmazonS3Client(credentials, config), useHttp);
+        });
+
         services.AddSingleton<IAmazonSQS>(_ =>
         {
             var config = new AmazonSQSConfig { AuthenticationRegion = awsOptions.Region };
