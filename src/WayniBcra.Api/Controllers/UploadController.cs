@@ -19,20 +19,27 @@ public sealed class UploadController : ControllerBase
     }
 
     /// <summary>
-    /// POST /upload — uploads the BCRA file (multipart/form-data) and starts asynchronous processing.
-    /// Returns 202 Accepted with the created import job id.
+    /// POST /upload — registers an import and returns a pre-signed URL to upload the file directly to
+    /// S3 (the file does not pass through the API, which is required for the multi-GB BCRA padrón).
+    /// The client then does a PUT to <c>uploadUrl</c>; processing is triggered by the S3 event.
     /// </summary>
     [HttpPost]
-    public async Task<IActionResult> Upload(IFormFile file, CancellationToken cancellationToken)
+    public async Task<IActionResult> Upload([FromBody] UploadRequest request, CancellationToken cancellationToken)
     {
-        if (file is null || file.Length == 0)
+        if (request is null || string.IsNullOrWhiteSpace(request.FileName))
         {
-            return BadRequest("Se requiere un archivo no vacío.");
+            return BadRequest("Se requiere el nombre del archivo.");
         }
 
-        await using var stream = file.OpenReadStream();
-        var importJobId = await _uploadHandler.HandleAsync(file.FileName, stream, cancellationToken);
+        var ticket = await _uploadHandler.HandleAsync(request.FileName, cancellationToken);
 
-        return Accepted(new { importJobId });
+        return Accepted(new
+        {
+            importJobId = ticket.ImportJobId,
+            uploadUrl = ticket.UploadUrl,
+        });
     }
+
+    /// <summary>Request body for <c>POST /upload</c>.</summary>
+    public sealed record UploadRequest(string FileName);
 }

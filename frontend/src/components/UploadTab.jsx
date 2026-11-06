@@ -1,18 +1,20 @@
-import { useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import {
+    Alert,
+    Box,
+    Button,
+    LinearProgress,
+    Paper,
+    Stack,
+    Typography
+} from '@mui/material';
+import { useState } from 'react';
 import { uploadFile } from '../api/imports';
 
 export default function UploadTab() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
@@ -25,10 +27,11 @@ export default function UploadTab() {
   const handleUpload = async () => {
     if (!file) return;
     setLoading(true);
+    setProgress(0);
     setResult(null);
     setError(null);
     try {
-      const data = await uploadFile(file);
+      const data = await uploadFile(file, setProgress);
       setResult(data);
     } catch (err) {
       setError(err.response?.data ?? 'No se pudo subir el archivo.');
@@ -47,7 +50,7 @@ export default function UploadTab() {
         la API responde de inmediato y el trabajo se realiza en segundo plano.
       </Typography>
 
-      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: 'center' }}>
         <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
           Elegir archivo
           <input type="file" hidden onChange={handleFileChange} />
@@ -64,6 +67,15 @@ export default function UploadTab() {
       >
         {loading ? 'Subiendo...' : 'Subir'}
       </Button>
+
+      {loading && (
+        <Box sx={{ mt: 2 }}>
+          <LinearProgress variant="determinate" value={progress} />
+          <Typography variant="caption" color="text.secondary">
+            Subiendo archivo: {progress}%
+          </Typography>
+        </Box>
+      )}
 
       {result && (
         <Alert severity="success" sx={{ mt: 2 }}>

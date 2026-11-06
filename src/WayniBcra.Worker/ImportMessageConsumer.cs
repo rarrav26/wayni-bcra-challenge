@@ -75,23 +75,32 @@ public sealed class ImportMessageConsumer : BackgroundService
 
     private async Task HandleMessageAsync(string queueUrl, Message message, CancellationToken cancellationToken)
     {
-        ImportQueueMessage? payload;
-        try
+        // When an S3 -> SQS notification is configured, S3 first sends a one-off "s3:TestEvent" to
+        // validate the wiring. It carries no object, so skip it quietly (it is expected, not an error).
+        if (message.Body is not null && message.Body.Contains("\"s3:TestEvent\"", StringComparison.Ordinal))
         {
-            payload = JsonSerializer.Deserialize<ImportQueueMessage>(message.Body);
-        }
-        catch (Exception ex)
-        {
-            // Malformed message: cannot be processed. Delete it so it does not block the queue
-            // (it would otherwise loop until the DLQ). Logged for diagnosis.
-            _logger.LogError(ex, "Malformed queue message, deleting. Body length: {Length}.", message.Body?.Length ?? 0);
+            _logger.LogInformation("Ignoring S3 test event (notification setup), deleting.");
             await _sqs.DeleteMessageAsync(queueUrl, message.ReceiptHandle, cancellationToken);
             return;
         }
 
-        if (payload is null)
+        // The queue receives S3 "object created" events (S3 -> SQS). Extract the object key and
+        // recover the import job id encoded in it.
+        string? objectKey;
+        try
         {
-            _logger.LogError("Null queue message payload, deleting.");
+            objectKey = ExtractObjectKey(message.Body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Malformed S3 event, deleting. Body length: {Length}.", message.Body?.Length ?? 0);
+            await _sqs.DeleteMessageAsync(queueUrl, message.ReceiptHandle, cancellationToken);
+            return;
+        }
+
+        if (objectKey is null || !ImportObjectKey.TryParseImportJobId(objectKey, out var importJobId))
+        {
+            _logger.LogWarning("S3 event without a recognizable import key ({ObjectKey}), deleting.", objectKey);
             await _sqs.DeleteMessageAsync(queueUrl, message.ReceiptHandle, cancellationToken);
             return;
         }
@@ -102,19 +111,42 @@ public sealed class ImportMessageConsumer : BackgroundService
             var fileStorage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
             var handler = scope.ServiceProvider.GetRequiredService<ProcessImportHandler>();
 
-            await using var fileStream = await fileStorage.DownloadAsync(payload.ObjectKey, cancellationToken);
-            await handler.HandleAsync(payload.ImportJobId, fileStream, cancellationToken);
+            // Pass a stream factory (not an open stream) so the handler can retry the download from
+            // the start on a transient connection reset while reading a large object.
+            await handler.HandleAsync(
+                importJobId,
+                ct => fileStorage.DownloadAsync(objectKey, ct),
+                cancellationToken);
 
             // Success: acknowledge by deleting the message.
             await _sqs.DeleteMessageAsync(queueUrl, message.ReceiptHandle, cancellationToken);
-            _logger.LogInformation("Processed and acknowledged import {ImportJobId}.", payload.ImportJobId);
+            _logger.LogInformation("Processed and acknowledged import {ImportJobId}.", importJobId);
         }
         catch (Exception ex)
         {
             // Do NOT delete: the message returns to the queue after the visibility timeout and is
             // retried (idempotent reprocessing). After maxReceiveCount it is moved to the DLQ.
-            _logger.LogError(ex, "Failed to process import {ImportJobId}. Message will be retried.", payload.ImportJobId);
+            _logger.LogError(ex, "Failed to process import {ImportJobId}. Message will be retried.", importJobId);
         }
+    }
+
+    // Parses the S3 event and returns the (URL-decoded) object key, or null if the event has none.
+    private static string? ExtractObjectKey(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        var notification = JsonSerializer.Deserialize<S3EventNotification>(body);
+        var rawKey = notification?.Records?.FirstOrDefault()?.S3?.Object?.Key;
+        if (string.IsNullOrWhiteSpace(rawKey))
+        {
+            return null;
+        }
+
+        // S3 encodes the key in events (spaces as '+', etc.); decode it back to the real key.
+        return Uri.UnescapeDataString(rawKey.Replace("+", " "));
     }
 
     private async Task<string> ResolveQueueUrlWithRetryAsync(CancellationToken cancellationToken)

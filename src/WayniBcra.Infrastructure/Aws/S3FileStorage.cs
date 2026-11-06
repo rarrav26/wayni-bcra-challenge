@@ -12,39 +12,43 @@ namespace WayniBcra.Infrastructure.Aws;
 public sealed class S3FileStorage : IFileStorage
 {
     private readonly IAmazonS3 _s3;
+    private readonly IS3Presigner _presigner;
     private readonly AwsOptions _options;
 
-    public S3FileStorage(IAmazonS3 s3, IOptions<AwsOptions> options)
+    public S3FileStorage(IAmazonS3 s3, IS3Presigner presigner, IOptions<AwsOptions> options)
     {
         _s3 = s3;
+        _presigner = presigner;
         _options = options.Value;
     }
 
-    public async Task<string> UploadAsync(string fileName, Stream content, CancellationToken cancellationToken = default)
+    public Task<string> CreateUploadUrlAsync(
+        string objectKey, TimeSpan expiresIn, CancellationToken cancellationToken = default)
     {
-        // Unique key per upload to avoid collisions between imports; keeps the original file name as suffix.
-        var objectKey = $"imports/{Guid.NewGuid():N}/{fileName}";
-
-        var request = new PutObjectRequest
+        // Pre-signed PUT URL: the client uploads directly to S3, so large files never pass through
+        // the API. The URL grants only PUT on this specific key, and expires. Signed against the
+        // PUBLIC endpoint so the browser (which cannot resolve the internal Docker host) can use it.
+        var request = new GetPreSignedUrlRequest
         {
             BucketName = _options.BucketName,
             Key = objectKey,
-            InputStream = content,
-            AutoCloseStream = false
+            Verb = HttpVerb.PUT,
+            Expires = DateTime.UtcNow.Add(expiresIn),
+            // Force the URL scheme to match the public endpoint. LocalStack serves plain HTTP; without
+            // this the SDK signs https:// and the browser's TLS handshake fails.
+            Protocol = _presigner.UseHttp ? Protocol.HTTP : Protocol.HTTPS,
         };
 
-        await _s3.PutObjectAsync(request, cancellationToken);
-        return objectKey;
+        return _presigner.Client.GetPreSignedURLAsync(request);
     }
 
     public async Task<Stream> DownloadAsync(string objectKey, CancellationToken cancellationToken = default)
     {
         var response = await _s3.GetObjectAsync(_options.BucketName, objectKey, cancellationToken);
 
-        // Copy to a seekable MemoryStream so the caller can read it freely and the S3 response is released.
-        var memory = new MemoryStream();
-        await response.ResponseStream.CopyToAsync(memory, cancellationToken);
-        memory.Position = 0;
-        return memory;
+        // Return the S3 response stream directly (do NOT buffer it into memory): the reader consumes
+        // it line by line as S3 transmits it, keeping memory bounded regardless of file size (the
+        // BCRA padrón is ~6 GB). Disposing this stream releases the underlying HTTP response.
+        return response.ResponseStream;
     }
 }
