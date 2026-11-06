@@ -8,7 +8,7 @@ namespace WayniBcra.Application.Imports;
 /// Orchestrates the processing of an import: retrieves the job, transitions it through its lifecycle
 /// (Start -> Complete/Fail), and delegates reading and aggregation to the reader and processor.
 /// Invoked by the Worker when a queue message is consumed. No interface: the varying parts
-/// (reading, processing) are abstracted behind their own interfaces (ADR-020).
+/// (reading, processing) are abstracted behind their own interfaces.
 /// </summary>
 public sealed class ProcessImportHandler
 {
@@ -35,14 +35,14 @@ public sealed class ProcessImportHandler
     // How many times to retry opening + reading + ingesting the file when the download stream fails
     // transiently (e.g. the object store resets the connection mid-read). Each attempt re-opens the
     // stream and re-ingests from scratch; this is safe because ingestion is idempotent per import
-    // (staging is truncated before each COPY, ADR-016).
+    // (staging is truncated before each COPY).
     private const int MaxDownloadAttempts = 3;
 
     /// <summary>
     /// Processes the import identified by <paramref name="importJobId"/>. <paramref name="openStream"/>
     /// opens the source file (re-invocable so a transient download failure can be retried from the
     /// start). On persistent failure, marks the job as failed and rethrows so the queue can retry
-    /// (idempotent reprocessing, ADR-016).
+    /// (idempotent reprocessing).
     /// </summary>
     public async Task HandleAsync(
         Guid importJobId,

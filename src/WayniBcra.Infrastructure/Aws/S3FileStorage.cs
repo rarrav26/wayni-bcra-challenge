@@ -7,7 +7,7 @@ namespace WayniBcra.Infrastructure.Aws;
 
 /// <summary>
 /// S3-backed file storage. Uploads files under a unique key and downloads them by key.
-/// The bucket is assumed to exist (provisioned by the LocalStack init script, ADR-026).
+/// The bucket is assumed to exist (provisioned by the LocalStack init script).
 /// </summary>
 public sealed class S3FileStorage : IFileStorage
 {

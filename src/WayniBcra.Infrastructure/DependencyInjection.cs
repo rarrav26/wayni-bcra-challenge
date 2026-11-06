@@ -17,8 +17,8 @@ using WayniBcra.Infrastructure.Persistence.Repositories;
 namespace WayniBcra.Infrastructure;
 
 /// <summary>
-/// Registers Infrastructure services (persistence, file reading) into the DI container.
-/// Called from the API and Worker composition roots.
+/// Registers Infrastructure services (persistence, file reading, AWS S3/SQS, email/outbox) into the
+/// DI container. Called from the API and Worker composition roots.
 /// </summary>
 public static class DependencyInjection
 {

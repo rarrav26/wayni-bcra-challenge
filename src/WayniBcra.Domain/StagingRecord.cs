@@ -3,7 +3,7 @@ namespace WayniBcra.Domain;
 /// <summary>
 /// A raw parsed record belonging to a specific import, stored transiently in the staging table
 /// before aggregation. Holds only the fields used by this solution, plus the owning import id to
-/// isolate concurrent imports. Cleared per import after the aggregates are computed (ADR-017, ADR-018).
+/// isolate concurrent imports. Cleared per import after the aggregates are computed.
 /// </summary>
 public sealed class StagingRecord
 {

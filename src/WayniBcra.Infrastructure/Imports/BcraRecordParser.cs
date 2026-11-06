@@ -41,7 +41,7 @@ public static class BcraRecordParser
         var identificationType = Slice(line, IdentificationTypeField);
         var identificationNumber = Slice(line, IdentificationNumberField);
         // Field 6 is left-aligned and space-padded in the real file (e.g. "1 ", "5 ", "11").
-        // Normalize to a canonical 2-digit, zero-padded code ("01", "05", "11") per ADR-013/014.
+        // Normalize to a canonical 2-digit, zero-padded code ("01", "05", "11").
         var creditStatus = NormalizeCreditStatus(line[CreditStatusField.Start..CreditStatusField.End]);
         // Field 7 is right-aligned and space-padded in the BCRA format, so trimming spaces is part
         // of parsing it (handled inside ParseFinancingAmount), unlike the fixed numeric fields above.
@@ -71,8 +71,8 @@ public static class BcraRecordParser
             throw new FormatException("Financing amount is empty.");
         }
 
-        // The BCRA format uses ',' as the decimal separator. Parse with invariant culture
-        // forcing comma as the decimal point.
+        // The BCRA format uses ',' as the decimal separator. InvariantCulture is immutable, so clone
+        // it and force comma as the decimal point (and no group separator).
         var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.NumberDecimalSeparator = ",";
         culture.NumberFormat.NumberGroupSeparator = string.Empty;
@@ -93,7 +93,7 @@ public static class BcraRecordParser
     /// <summary>
     /// Normalizes the credit status (field 6) to a canonical 2-digit, zero-padded code.
     /// The real file left-aligns and space-pads this field ("1 " -> "01"); 2-digit codes pass through
-    /// ("11" -> "11"). The original numeric meaning is preserved (ADR-013/014).
+    /// ("11" -> "11"). The original numeric meaning is preserved.
     /// </summary>
     public static string NormalizeCreditStatus(ReadOnlySpan<char> raw)
     {

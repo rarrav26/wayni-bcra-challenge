@@ -16,7 +16,7 @@ El procesamiento es asíncrono y distribuido, desacoplado mediante una cola de m
   - [Interfaz web](#interfaz-web)
   - [Notificaciones (Mailpit)](#notificaciones-mailpit)
   - [Logs](#logs)
-  - [Probar los endpoints (`requests.http`)](#probar-los-endpoints-archivo-requestshttp)
+  - [Probar los endpoints (archivo `.http`)](#probar-los-endpoints-archivo-http)
 - [Endpoints](#endpoints)
 - [Arquitectura](#arquitectura)
 - [Testing](#testing)
@@ -162,11 +162,13 @@ docker-compose exec localstack awslocal logs filter-log-events \
 > logging estructurado a stdout está listo para conectar cualquier backend de observabilidad
 > (CloudWatch, Seq, Datadog) sin tocar el código.
 
-### Probar los endpoints (archivo `requests.http`)
+### Probar los endpoints (archivo `.http`)
 
-En la raíz hay un archivo `requests.http` con ejemplos listos para ejecutar (extensión *REST Client* de
-VS Code, o el runner `.http` de Visual Studio / Rider). Incluye el flujo completo de carga en dos pasos
-(registrar + `PUT` directo a S3), que Swagger no cubre por completo, y las consultas.
+En `src/WayniBcra.Api/WayniBcra.Api.http` hay ejemplos listos para ejecutar: Visual Studio los reconoce
+con su botón *Send Request*, y también funcionan con la extensión *REST Client* de VS Code o con Rider.
+Cubre el health check, el paso 1 de la carga (`POST /upload`) y las consultas. El paso 2 (el `PUT`
+binario directo a S3) se hace con `curl` o desde la interfaz web: el cliente `.http` de Visual Studio
+no envía bien el cuerpo binario, así que queda documentado como comentario dentro del archivo.
 
 ---
 
@@ -201,8 +203,11 @@ curl -X POST http://localhost:8080/upload \
 `uploadUrl` del paso anterior (entre comillas, por los `&` del query string):
 
 ```bash
-curl -X PUT --upload-file deudores.txt "http://localhost:4566/wayni-bcra-imports/imports/eb59.../deudores.txt?X-Amz-..."
+curl -X PUT --data-binary "@deudores.txt" "http://localhost:4566/wayni-bcra-imports/imports/eb59.../deudores.txt?X-Amz-..."
 ```
+
+> Usá `--data-binary "@archivo"` (con `@`), no `-d`: así se preservan los saltos de línea del formato
+> de ancho fijo. El mismo comando está en el archivo `.http` como referencia.
 
 Al completarse el upload, S3 emite un evento que dispara el procesamiento asíncrono (S3 → SQS → Worker).
 El estado del import se registra en la base y, al finalizar, se envía la notificación por email.

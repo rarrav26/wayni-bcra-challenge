@@ -4,7 +4,7 @@ namespace WayniBcra.Application.Imports;
 
 /// <summary>
 /// Persistence for <see cref="ImportJob"/>. Exposes only the operations used by the import flow
-/// (no generic CRUD, per ADR-020).
+/// (no generic CRUD).
 /// </summary>
 public interface IImportJobRepository
 {

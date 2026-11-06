@@ -20,7 +20,7 @@ public sealed class StagingRecordConfiguration : IEntityTypeConfiguration<Stagin
         // Per-record value: faithful to the layout (11 integer digits + 1 decimal).
         builder.Property(r => r.FinancingAmount).HasPrecision(12, 1);
 
-        // Records are isolated and cleared per import (ADR-018).
+        // Records are isolated and cleared per import; index the owning import id for those operations.
         builder.HasIndex(r => r.ImportJobId);
     }
 }
