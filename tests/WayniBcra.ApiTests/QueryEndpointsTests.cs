@@ -102,11 +102,20 @@ public sealed class QueryEndpointsTests : IClassFixture<TestApiFactory>
     }
 
     [Fact]
-    public async Task GetTopDebtors_WithInvalidN_Returns400()
+    public async Task GetTopDebtors_WithInvalidN_ReturnsProblemDetails400()
     {
         var client = _factory.CreateClient();
         var response = await client.GetAsync("/deudores/top/0");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // The error is returned as RFC 7807 ProblemDetails, not a bare string.
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal(400, root.GetProperty("status").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("detail").GetString()));
     }
 }

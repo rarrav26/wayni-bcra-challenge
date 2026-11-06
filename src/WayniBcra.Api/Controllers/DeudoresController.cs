@@ -20,6 +20,8 @@ public sealed class DeudoresController : ControllerBase
 
     /// <summary>GET /deudores/{cuit} — returns the debtor by identification number.</summary>
     [HttpGet("{cuit}")]
+    [ProducesResponseType<DebtorResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<DebtorResponse>> GetByCuit(string cuit, CancellationToken cancellationToken)
     {
         var debtor = await _debtors.GetByIdentificationNumberAsync(cuit, cancellationToken);
@@ -33,11 +35,16 @@ public sealed class DeudoresController : ControllerBase
 
     /// <summary>GET /deudores/top/{n} — returns the N debtors with the highest total financing.</summary>
     [HttpGet("top/{n:int}")]
+    [ProducesResponseType<IEnumerable<DebtorResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<IEnumerable<DebtorResponse>>> GetTop(int n, CancellationToken cancellationToken)
     {
         if (n <= 0)
         {
-            return BadRequest("La cantidad de deudores debe ser mayor a cero.");
+            return Problem(
+                detail: "La cantidad de deudores debe ser mayor a cero.",
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Parámetro inválido");
         }
 
         var debtors = await _debtors.GetTopByTotalFinancingAsync(n, cancellationToken);
